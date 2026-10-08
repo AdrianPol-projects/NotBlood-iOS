@@ -21,6 +21,9 @@ int eduke32_ios_main(int argc, char *argv[]);
 char *ios_getappdir(void);       // read-only app bundle resources
 char *ios_getdocumentsdir(void); // visible in the Files app
 
+// chdir() to the Documents folder (shown in Files) and drop the readme there.
+void ios_setupdocuments(void);
+
 // Nags (with a recheck loop) until BLOOD.RFF shows up in the Documents folder.
 void ios_checkgamedata(void);
 

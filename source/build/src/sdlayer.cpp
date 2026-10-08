@@ -605,6 +605,7 @@ int main(int argc, char *argv[])
     sdlayer_sethints();
 
 #ifdef EDUKE32_IOS
+    ios_setupdocuments();
     ios_checkgamedata();
 #endif
 

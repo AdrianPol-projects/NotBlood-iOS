@@ -97,7 +97,9 @@ void ios_checkgamedata(void)
     }
 }
 
-static void ios_setupdocuments(void)
+// Must also run after SDL's app delegate has started: it changes the working
+// directory to the (read-only) app bundle in didFinishLaunchingWithOptions.
+void ios_setupdocuments(void)
 {
     // Runs before the engine allocator exists, so stick to Foundation/libc here.
     @autoreleasepool

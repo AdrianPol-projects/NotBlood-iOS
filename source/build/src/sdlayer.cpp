@@ -617,6 +617,8 @@ int main(int argc, char *argv[])
 
 #ifdef EDUKE32_IOS
     ios_setupdocuments();
+    if (freopen("stdout.txt", "w", stdout))
+        setvbuf(stdout, NULL, _IONBF, 0);
     ios_checkgamedata();
 #endif
 
@@ -2077,6 +2079,7 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+        LOG_F(INFO, "iOS: creating OpenGL ES 2.0 window (%dx%d)", x, y);
         sdl_window = SDL_CreateWindow("", 0, 0, x, y,
                                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
 
@@ -2094,7 +2097,12 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
             nogl = 1;
         }
         else
+        {
+            LOG_F(INFO, "iOS: gl4es initialized, loading GL functions");
             gladLoadGLLoader(ios_glGetProcAddress);
+            LOG_F(INFO, "iOS: GL %d.%d: %s / %s", GLVersion.major, GLVersion.minor,
+                  glGetString ? (char const *)glGetString(GL_VERSION) : "?", glGetString ? (char const *)glGetString(GL_RENDERER) : "?");
+        }
 #else
         SDL_GL_ATTRIBUTES(i, sdlayer_gl_attributes);
 

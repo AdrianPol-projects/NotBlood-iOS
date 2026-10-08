@@ -5223,7 +5223,7 @@ RORHACK:
 #ifdef USE_OPENGL
             else
             {
-                if (videoGetRenderMode() == REND_POLYMOST && gDeliriumBlur)
+                if (videoGetRenderMode() == REND_POLYMOST && gDeliriumBlur && glAccum) // no accumulation buffer on GL ES (iOS/gl4es)
                 {
                     if (!bDeliriumOld)
                     {

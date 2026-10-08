@@ -930,9 +930,10 @@ void polymost_initdrawpoly(void)
     glGenBuffers(1, &drawpolyVertsID);
 
     // reset the sync objects, as old ones we had from any last GL context are gone now
-    for (int i=0; i<ARRAY_SSIZE(drawpolyVertsSync); i++)
-        if (glIsSync(drawpolyVertsSync[i]))
-            glDeleteSync(drawpolyVertsSync[i]);
+    if (glIsSync) // GL 3.2+ / ARB_sync only
+        for (int i=0; i<ARRAY_SSIZE(drawpolyVertsSync); i++)
+            if (glIsSync(drawpolyVertsSync[i]))
+                glDeleteSync(drawpolyVertsSync[i]);
 
     Bmemset(drawpolyVertsSync, 0, sizeof(drawpolyVertsSync));
 

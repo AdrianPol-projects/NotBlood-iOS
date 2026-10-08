@@ -479,6 +479,10 @@ SDL_Color rgba(int r, int g, int b, float a)
     return SDL_Color { (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)clamp((int)(a * 255.f), 0, 255) };
 }
 
+#ifdef USE_OPENGL
+void submitGeometryGL(bool textured, SDL_Vertex const *v, int nv, int const *idx, int ni);
+#endif
+
 // All overlay drawing is triangles, optionally textured with the font atlas, submitted
 // either through SDL_Renderer (Metal fallback) or immediate-mode GL (gl4es path).
 void submitGeometry(bool textured, SDL_Vertex const *v, int nv, int const *idx, int ni)
@@ -490,25 +494,7 @@ void submitGeometry(bool textured, SDL_Vertex const *v, int nv, int const *idx, 
     }
 
 #ifdef USE_OPENGL
-    UNREFERENCED_PARAMETER(nv);
-
-    if (textured)
-    {
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, g_fontGLTexture);
-    }
-    else
-        glDisable(GL_TEXTURE_2D);
-
-    glBegin(GL_TRIANGLES);
-    for (int i = 0; i < ni; i++)
-    {
-        auto const &vv = v[idx[i]];
-        glColor4ub(vv.color.r, vv.color.g, vv.color.b, vv.color.a);
-        glTexCoord2f(vv.tex_coord.x, vv.tex_coord.y);
-        glVertex2f(vv.position.x, vv.position.y);
-    }
-    glEnd();
+    submitGeometryGL(textured, v, nv, idx, ni);
 #endif
 }
 
@@ -1804,21 +1790,129 @@ void touch_render(SDL_Renderer *renderer, SDL_Rect const *gameRect)
 namespace
 {
 
-// Everything touch_renderGL changes, so it can be put back exactly. Some engine code
-// (e.g. glsurface for the classic renderer) binds its program/buffers once and relies on
-// them staying bound across frames.
+// The GL overlay uses its own tiny shader and client-side vertex arrays (plain GLES 2.0
+// style, which gl4es passes through almost untouched) rather than fixed-function or
+// immediate mode, and puts back every bit of state it changes: some engine code (e.g.
+// glsurface for the classic renderer) binds its program/buffers/attributes once and
+// relies on them staying bound across frames.
+
+GLuint g_overlayProgram;
+GLint  g_overlayProjLoc = -1, g_overlayUseTexLoc = -1, g_overlayTexLoc = -1;
+bool   g_overlayFailed;
+
+constexpr GLuint kAttrPos = 0, kAttrColor = 1, kAttrUV = 2;
+
+char const kOverlayVS[] =
+    "#version 120\n"
+    "attribute vec2 a_pos;\n"
+    "attribute vec4 a_color;\n"
+    "attribute vec2 a_uv;\n"
+    "uniform mat4 u_proj;\n"
+    "varying vec4 v_color;\n"
+    "varying vec2 v_uv;\n"
+    "void main()\n"
+    "{\n"
+    "    gl_Position = u_proj * vec4(a_pos, 0.0, 1.0);\n"
+    "    v_color = a_color;\n"
+    "    v_uv = a_uv;\n"
+    "}\n";
+
+char const kOverlayFS[] =
+    "#version 120\n"
+    "uniform sampler2D u_tex;\n"
+    "uniform float u_useTex;\n"
+    "varying vec4 v_color;\n"
+    "varying vec2 v_uv;\n"
+    "void main()\n"
+    "{\n"
+    "    vec4 c = v_color;\n"
+    "    if (u_useTex > 0.5)\n"
+    "        c *= texture2D(u_tex, v_uv);\n"
+    "    gl_FragColor = c;\n"
+    "}\n";
+
+GLuint compileOverlayShader(GLenum type, char const *src)
+{
+    GLuint const sh = glCreateShader(type);
+    glShaderSource(sh, 1, &src, NULL);
+    glCompileShader(sh);
+
+    GLint ok = 0;
+    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+    if (!ok)
+    {
+        char log[1024] = {};
+        glGetShaderInfoLog(sh, sizeof(log) - 1, NULL, log);
+        LOG_F(ERROR, "touch overlay: shader compile failed: %s", log);
+        glDeleteShader(sh);
+        return 0;
+    }
+    return sh;
+}
+
+bool ensureOverlayProgram(void)
+{
+    if (g_overlayProgram)
+        return true;
+    if (g_overlayFailed)
+        return false;
+
+    GLuint const vs = compileOverlayShader(GL_VERTEX_SHADER, kOverlayVS);
+    GLuint const fs = compileOverlayShader(GL_FRAGMENT_SHADER, kOverlayFS);
+
+    if (!vs || !fs)
+    {
+        g_overlayFailed = true;
+        return false;
+    }
+
+    GLuint const prog = glCreateProgram();
+    glAttachShader(prog, vs);
+    glAttachShader(prog, fs);
+    glBindAttribLocation(prog, kAttrPos, "a_pos");
+    glBindAttribLocation(prog, kAttrColor, "a_color");
+    glBindAttribLocation(prog, kAttrUV, "a_uv");
+    glLinkProgram(prog);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    GLint ok = 0;
+    glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+    if (!ok)
+    {
+        char log[1024] = {};
+        glGetProgramInfoLog(prog, sizeof(log) - 1, NULL, log);
+        LOG_F(ERROR, "touch overlay: program link failed: %s", log);
+        glDeleteProgram(prog);
+        g_overlayFailed = true;
+        return false;
+    }
+
+    g_overlayProgram = prog;
+    g_overlayProjLoc = glGetUniformLocation(prog, "u_proj");
+    g_overlayUseTexLoc = glGetUniformLocation(prog, "u_useTex");
+    g_overlayTexLoc = glGetUniformLocation(prog, "u_tex");
+    LOG_F(INFO, "touch overlay: GL program ready");
+    return true;
+}
+
+struct SavedAttrib
+{
+    GLint enabled, size, type, normalized, stride, buffer;
+    GLvoid *pointer;
+};
+
 struct SavedGLState
 {
     GLint program, arrayBuffer, elementBuffer, activeTexture, texture0;
     GLint viewport[4];
-    GLint blendSrc, blendDst, texEnvMode, matrixMode;
+    GLint blendSrc, blendDst;
     GLboolean depthMask, colorMask[4];
-    GLboolean enabled[7];
-    GLboolean texture2D[5];
-    GLfloat color[4], texCoord[4];
+    GLboolean enabled[6];
+    SavedAttrib attrib[3];
 };
 
-GLenum const kSavedCaps[7] = { GL_DEPTH_TEST, GL_CULL_FACE, GL_ALPHA_TEST, GL_FOG, GL_SCISSOR_TEST, GL_STENCIL_TEST, GL_BLEND };
+GLenum const kSavedCaps[6] = { GL_DEPTH_TEST, GL_CULL_FACE, GL_ALPHA_TEST, GL_SCISSOR_TEST, GL_STENCIL_TEST, GL_BLEND };
 
 void saveGLState(SavedGLState &st)
 {
@@ -1827,45 +1921,52 @@ void saveGLState(SavedGLState &st)
     glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &st.elementBuffer);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &st.activeTexture);
     glGetIntegerv(GL_VIEWPORT, st.viewport);
-    glGetIntegerv(GL_MATRIX_MODE, &st.matrixMode);
     glGetIntegerv(GL_BLEND_SRC, &st.blendSrc);
     glGetIntegerv(GL_BLEND_DST, &st.blendDst);
     glGetBooleanv(GL_DEPTH_WRITEMASK, &st.depthMask);
     glGetBooleanv(GL_COLOR_WRITEMASK, st.colorMask);
-    glGetFloatv(GL_CURRENT_COLOR, st.color);
-    glGetFloatv(GL_CURRENT_TEXTURE_COORDS, st.texCoord);
 
-    for (int i = 0; i < 7; i++)
+    for (int i = 0; i < 6; i++)
         st.enabled[i] = glIsEnabled(kSavedCaps[i]);
 
-    for (int i = 4; i >= 0; i--)
+    for (GLuint i = 0; i < 3; i++)
     {
-        glActiveTexture(GL_TEXTURE0 + i);
-        st.texture2D[i] = glIsEnabled(GL_TEXTURE_2D);
+        auto &a = st.attrib[i];
+        glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &a.enabled);
+        glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_SIZE, &a.size);
+        glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_TYPE, &a.type);
+        glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &a.normalized);
+        glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &a.stride);
+        glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &a.buffer);
+        a.pointer = nullptr;
+        glGetVertexAttribPointerv(i, GL_VERTEX_ATTRIB_ARRAY_POINTER, &a.pointer);
     }
 
-    // unit 0 is active now
+    glActiveTexture(GL_TEXTURE0);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &st.texture0);
-    glGetTexEnviv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, &st.texEnvMode);
 }
 
 void restoreGLState(SavedGLState const &st)
 {
-    for (int i = 4; i >= 0; i--)
+    for (GLuint i = 0; i < 3; i++)
     {
-        glActiveTexture(GL_TEXTURE0 + i);
-        if (st.texture2D[i])
-            glEnable(GL_TEXTURE_2D);
+        auto const &a = st.attrib[i];
+        if (a.size > 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, a.buffer);
+            glVertexAttribPointer(i, a.size, a.type, (GLboolean)a.normalized, a.stride, a.pointer);
+        }
+        if (a.enabled)
+            glEnableVertexAttribArray(i);
         else
-            glDisable(GL_TEXTURE_2D);
+            glDisableVertexAttribArray(i);
     }
 
-    // unit 0 is active now
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, st.texture0);
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, st.texEnvMode);
     glActiveTexture(st.activeTexture);
 
-    for (int i = 0; i < 7; i++)
+    for (int i = 0; i < 6; i++)
     {
         if (st.enabled[i])
             glEnable(kSavedCaps[i]);
@@ -1877,12 +1978,37 @@ void restoreGLState(SavedGLState const &st)
     glDepthMask(st.depthMask);
     glColorMask(st.colorMask[0], st.colorMask[1], st.colorMask[2], st.colorMask[3]);
     glViewport(st.viewport[0], st.viewport[1], st.viewport[2], st.viewport[3]);
-    glColor4fv(st.color);
-    glTexCoord4fv(st.texCoord);
     glBindBuffer(GL_ARRAY_BUFFER, st.arrayBuffer);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, st.elementBuffer);
-    glMatrixMode(st.matrixMode);
     glUseProgram(st.program);
+}
+
+} // namespace
+
+namespace
+{
+
+void submitGeometryGL(bool textured, SDL_Vertex const *v, int nv, int const *idx, int ni)
+{
+    static GLushort idx16[1024];
+
+    if (!g_overlayProgram || ni > (int)ARRAY_SIZE(idx16) || nv > 65535)
+        return;
+
+    for (int i = 0; i < ni; i++)
+        idx16[i] = (GLushort)idx[i];
+
+    glUniform1f(g_overlayUseTexLoc, textured ? 1.f : 0.f);
+
+    if (textured)
+        glBindTexture(GL_TEXTURE_2D, g_fontGLTexture);
+
+    GLsizei const stride = sizeof(SDL_Vertex);
+    glVertexAttribPointer(kAttrPos, 2, GL_FLOAT, GL_FALSE, stride, &v[0].position);
+    glVertexAttribPointer(kAttrColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, &v[0].color);
+    glVertexAttribPointer(kAttrUV, 2, GL_FLOAT, GL_FALSE, stride, &v[0].tex_coord);
+
+    glDrawElements(GL_TRIANGLES, ni, GL_UNSIGNED_SHORT, idx16);
 }
 
 } // namespace
@@ -1901,48 +2027,46 @@ void touch_renderGL(int outw, int outh)
     SavedGLState saved;
     saveGLState(saved);
 
-    // plain fixed-function 2D on top of the frame
-    glUseProgram(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-    for (int i = 4; i >= 1; i--) // the renderers use units 0-4; only 0 is used here
+    if (ensureOverlayProgram() && ensureFont())
     {
-        glActiveTexture(GL_TEXTURE0 + i);
-        glDisable(GL_TEXTURE_2D);
+        glUseProgram(g_overlayProgram);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glActiveTexture(GL_TEXTURE0);
+
+        for (GLenum const cap : kSavedCaps)
+            glDisable(cap);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glViewport(0, 0, outw, outh);
+
+        // pixel coordinates, origin top-left
+        GLfloat const proj[16] =
+        {
+            2.f / outw, 0.f, 0.f, 0.f,
+            0.f, -2.f / outh, 0.f, 0.f,
+            0.f, 0.f, -1.f, 0.f,
+            -1.f, 1.f, 0.f, 1.f,
+        };
+        glUniformMatrix4fv(g_overlayProjLoc, 1, GL_FALSE, proj);
+        glUniform1i(g_overlayTexLoc, 0);
+
+        glEnableVertexAttribArray(kAttrPos);
+        glEnableVertexAttribArray(kAttrColor);
+        glEnableVertexAttribArray(kAttrUV);
+
+        renderOverlay();
+
+        static bool reported;
+        if (!reported)
+        {
+            reported = true;
+            LOG_F(INFO, "touch overlay: first GL frame %dx%d, glGetError=0x%x", outw, outh, glGetError());
+        }
     }
-
-    glActiveTexture(GL_TEXTURE0);
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-    glViewport(0, 0, outw, outh);
-
-    for (GLenum const cap : kSavedCaps)
-        glDisable(cap);
-
-    glDepthMask(GL_FALSE);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glMatrixMode(GL_TEXTURE);
-    glPushMatrix();
-    glLoadIdentity();
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0, outw, outh, 0, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-
-    renderOverlay();
-
-    glMatrixMode(GL_TEXTURE);
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
 
     restoreGLState(saved);
 #else

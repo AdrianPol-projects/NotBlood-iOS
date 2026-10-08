@@ -3,6 +3,7 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <OpenGLES/ES2/gl.h>
+#import <objc/runtime.h>
 
 #include "compat.h"
 #include "iosbits.h"
@@ -111,6 +112,23 @@ int ios_initgl4es(SDL_Window *window)
 
     if (!SDL_GetWindowWMInfo(window, &info) || info.subsystem != SDL_SYSWM_UIKIT)
         return -1;
+
+    // Make sure the GL view renders at the panel's native resolution (Retina), not in points.
+    UIWindow *uiwindow = info.info.uikit.window;
+    UIView *view = uiwindow.rootViewController.view;
+    CGFloat const nativeScale = uiwindow.screen.nativeScale;
+
+    printf("iOS GL view: %s bounds %.0fx%.0f scale %.2f, screen nativeScale %.2f\n",
+           view ? object_getClassName(view) : "(none)", view.bounds.size.width, view.bounds.size.height,
+           view.contentScaleFactor, nativeScale);
+
+    if (view && nativeScale > 0 && view.contentScaleFactor != nativeScale)
+    {
+        view.contentScaleFactor = nativeScale;
+        [view setNeedsLayout];
+        [view layoutIfNeeded];
+        printf("iOS GL view: contentScaleFactor forced to %.2f\n", view.contentScaleFactor);
+    }
 
     s_glWindow = window;
     s_defaultFramebuffer = info.info.uikit.framebuffer;

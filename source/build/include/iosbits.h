@@ -37,6 +37,10 @@ int ios_initgl4es(SDL_Window *window);
 // GetProcAddress for the engine's GL loader (returns gl4es' desktop GL entry points).
 void *ios_glGetProcAddress(const char *name);
 
+// Size the game should render at: the GL drawable once it exists, else the native panel size.
+// (implemented in sdlayer.cpp)
+void ios_getrendersize(int32_t *w, int32_t *h);
+
 // Landscape screen size: physical pixels and UIKit points.
 void ios_getscreensize(int32_t *pixelw, int32_t *pixelh, int32_t *pointw, int32_t *pointh);
 

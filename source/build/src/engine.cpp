@@ -12024,9 +12024,9 @@ int32_t videoSetGameMode(char davidoption, int32_t daupscaledxdim, int32_t daups
     if (nogl) dabpp = 8;
 #endif
 #if defined EDUKE32_IOS && defined USE_OPENGL
-    // the GL drawable is always the full native screen on iOS
+    // on iOS the GL drawable always fills the screen; render at exactly its size
     if (!nogl)
-        ios_getscreensize(&daupscaledxdim, &daupscaledydim, NULL, NULL);
+        ios_getrendersize(&daupscaledxdim, &daupscaledydim);
 #endif
     daupscaledxdim = max(640, daupscaledxdim);
     daupscaledydim = max(400, daupscaledydim);
@@ -12047,6 +12047,15 @@ int32_t videoSetGameMode(char davidoption, int32_t daupscaledxdim, int32_t daups
     PolymostFreeVBOs();
 #endif
     if (videoSetMode(daupscaledxdim,daupscaledydim,dabpp,davidoption) < 0) return -1;
+
+#if defined EDUKE32_IOS && defined USE_OPENGL
+    // the first mode set creates the window, and the drawable it gets is authoritative
+    if (!nogl && bpp == dabpp)
+    {
+        daupscaledxdim = xres;
+        daupscaledydim = yres;
+    }
+#endif
 
     // Workaround possible bugs in the GL driver
     makeasmwriteable();

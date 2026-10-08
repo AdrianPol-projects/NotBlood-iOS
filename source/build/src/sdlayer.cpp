@@ -115,6 +115,24 @@ static void ios_getoutputsize(int *outw, int *outh)
         SDL_GL_GetDrawableSize(sdl_window, outw, outh);
 }
 
+void ios_getrendersize(int32_t *w, int32_t *h)
+{
+#ifdef USE_OPENGL
+    if (!nogl && sdl_window && sdl_context)
+    {
+        int dw = 0, dh = 0;
+        SDL_GL_GetDrawableSize(sdl_window, &dw, &dh);
+        if (dw > 0 && dh > 0)
+        {
+            *w = dw;
+            *h = dh;
+            return;
+        }
+    }
+#endif
+    ios_getscreensize(w, h, NULL, NULL);
+}
+
 static void ios_updategamerect(void)
 {
     int outw = 0, outh = 0;
@@ -1541,9 +1559,11 @@ void videoGetModes(int display)
 # ifdef USE_OPENGL
         if (!nogl)
         {
-            // GL output is always native; lower classic-renderer resolutions use the upscale option
-            SDL_ADDMODE(pixw & ~1, pixh & ~1, 8, 1);
-            SDL_ADDMODE(pixw & ~1, pixh & ~1, 32, 1);
+            // GL output always fills the drawable; lower classic-renderer resolutions use the upscale option
+            int32_t rw, rh;
+            ios_getrendersize(&rw, &rh);
+            SDL_ADDMODE(rw, rh, 8, 1);
+            SDL_ADDMODE(rw, rh, 32, 1);
         }
         else
 # endif
@@ -2102,6 +2122,19 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
             gladLoadGLLoader(ios_glGetProcAddress);
             LOG_F(INFO, "iOS: GL %d.%d: %s / %s", GLVersion.major, GLVersion.minor,
                   glGetString ? (char const *)glGetString(GL_VERSION) : "?", glGetString ? (char const *)glGetString(GL_RENDERER) : "?");
+
+            int winw = 0, winh = 0, dw = 0, dh = 0;
+            SDL_GetWindowSize(sdl_window, &winw, &winh);
+            SDL_GL_GetDrawableSize(sdl_window, &dw, &dh);
+            LOG_F(INFO, "iOS: window %dx%d points, drawable %dx%d pixels (requested %dx%d)", winw, winh, dw, dh, x, y);
+
+            if (dw > 0 && dh > 0)
+            {
+                x = dw;
+                y = dh;
+                modeschecked = 0;
+                videoGetModes();
+            }
         }
 #else
         SDL_GL_ATTRIBUTES(i, sdlayer_gl_attributes);
@@ -2432,6 +2465,14 @@ void videoShowFrame(int32_t w)
         {
             int outw, outh;
             SDL_GL_GetDrawableSize(sdl_window, &outw, &outh);
+
+            if (outw > 0 && outh > 0 && (outw != xres || outh != yres) && !sdl_resize.x)
+            {
+                LOG_F(INFO, "iOS: drawable is %dx%d but the game renders %dx%d; resetting video mode", outw, outh, xres, yres);
+                sdl_resize = { outw, outh };
+            }
+
+            ios_updategamerect();
             touch_renderGL(outw, outh);
 
             // survived the risky part (context, gl4es, shader compiles, first frames)

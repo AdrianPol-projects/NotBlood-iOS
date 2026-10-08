@@ -120,3 +120,8 @@ project.xcworkspace/
 /platform/Windows/*.cfg_orig
 /platform/Windows/*.DEM
 /platform/Windows/*.DEM_
+
+# iOS build
+/build-ios/
+/third_party/
+*.ipa

@@ -39,6 +39,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sound.h"
 #include "tile.h"
 #include "view.h"
+#ifdef EDUKE32_IOS
+#include "iosbits.h"
+#endif
 
 #ifdef __ANDROID__
 # include "android.h"
@@ -386,6 +389,12 @@ void CONFIG_SetDefaults(void)
 
     gSetup.xdim = droidinfo.screen_width;
     gSetup.ydim = droidinfo.screen_height;
+#elif defined EDUKE32_IOS
+    // default to the panel's native resolution; lower presets are in Options > Video
+    int32_t pixw, pixh;
+    ios_getscreensize(&pixw, &pixh, NULL, NULL);
+    gSetup.xdim = pixw;
+    gSetup.ydim = pixh;
 #else
 # if defined RENDERTYPESDL && SDL_MAJOR_VERSION > 1
     uint32_t inited = SDL_WasInit(SDL_INIT_VIDEO);
@@ -564,7 +573,11 @@ void CONFIG_SetDefaults(void)
     gRadialMenuSfx = 1;
     gRadialMenuSfxVol = 1;
     gRadialMenuReticle = 2;
+#ifdef EDUKE32_IOS
+    gCrouchToggle = 1; // holding an on-screen crouch button is awkward
+#else
     gCrouchToggle = 0;
+#endif
     gCrouchAuto = 0;
     gDetail = 4;
     gAutoDivingSuit = 1;

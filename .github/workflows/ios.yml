@@ -1,0 +1,90 @@
+---
+name: iOS IPA
+
+'on':
+  push:
+    branches: [ios]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SDL2_VERSION: 2.32.10
+
+jobs:
+  build-ios:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          cmake --version
+
+      - name: Fetch SDL2
+        run: |
+          curl -fsSL -o sdl2.tar.gz "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz"
+          mkdir -p third_party
+          tar xzf sdl2.tar.gz -C third_party
+
+      - name: Configure
+        run: |
+          cmake -S platform/iOS -B build-ios -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DSDL2_SOURCE_DIR="$PWD/third_party/SDL2-${SDL2_VERSION}" \
+            -DNOTBLOOD_BUILD=${{ github.run_number }}
+
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build-ios --config Release --target NotBlood -- \
+            -sdk iphoneos -quiet \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee build.log
+
+      - name: Package IPA
+        run: |
+          APP=$(find build-ios -type d -name NotBlood.app -path '*Release-iphoneos*' | head -n 1)
+          test -n "$APP" || { echo "NotBlood.app not found"; exit 1; }
+          echo "App bundle: $APP"
+          ls -la "$APP"
+          plutil -p "$APP/Info.plist"
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && zip -qry ../NotBlood.ipa Payload)
+          ls -la NotBlood.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NotBlood-ios-${{ github.run_number }}
+          path: NotBlood.ipa
+          if-no-files-found: error
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Publish to "ios-latest" release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-latest --yes --cleanup-tag || true
+          gh release create ios-latest NotBlood.ipa \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --title "NotBlood for iPad (build ${{ github.run_number }})" \
+            --notes "Unsigned IPA built from ${GITHUB_SHA}. Sign/sideload with Signulous, Sideloadly or AltStore. See platform/iOS/README.md."

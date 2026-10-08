@@ -19,6 +19,10 @@
 #include "osd.h"
 #include "pragmas.h"
 
+#ifdef EDUKE32_IOS
+#include "iosbits.h"
+#endif
+
 #ifdef __ANDROID__
 #include "android.h"
 #endif
@@ -860,6 +864,9 @@ static void controlUpdateGameFunctions(void)
 {
     controlUpdateFlagsFromButtons(CONTROL_ButtonFlags);
     controlUpdateFlagsFromAxes(CONTROL_ButtonFlags);
+#ifdef EDUKE32_IOS
+    touch_updateGameFunctions(CONTROL_ButtonFlags, CONTROL_NUM_FLAGS);
+#endif
 
     CONTROL_ButtonHeldState = CONTROL_ButtonState;
     CONTROL_ButtonState = 0;

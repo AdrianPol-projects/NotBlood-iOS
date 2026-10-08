@@ -8,6 +8,9 @@
 #ifdef _WIN32
 # define NEED_SHLOBJ_H
 # include "windows_inc.h"
+#elif defined EDUKE32_IOS
+# include "iosbits.h"
+# include <pwd.h>     // for getpwuid()
 #elif __APPLE__
 # include "osxbits.h"
 #endif
@@ -153,6 +156,8 @@ char *Bgetappdir(void)
 
 #elif defined EDUKE32_OSX
     dir = osx_getappdir();
+#elif defined EDUKE32_IOS
+    dir = ios_getappdir();
 #elif defined __FreeBSD__
     // the sysctl should also work when /proc/ is not mounted (which seems to
     // be common on FreeBSD), so use it..

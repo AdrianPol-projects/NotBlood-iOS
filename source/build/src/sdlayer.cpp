@@ -35,6 +35,10 @@
 
 #ifdef __ANDROID__
 # include <android/log.h>
+#elif defined EDUKE32_IOS
+# include "iosbits.h"
+# include <mach/mach.h>
+# include <mach/mach_time.h>
 #elif defined __APPLE__
 # include "osxbits.h"
 # include <mach/mach.h>
@@ -90,6 +94,88 @@ static int sdl_minimized;
 static SDL_Window *sdl_window;
 static SDL_GLContext sdl_context;
 static int vsync_unsupported;
+#endif
+
+#ifdef EDUKE32_IOS
+// iOS has no window surface worth using and no desktop GL: the classic renderer's
+// output is converted into sdl_surface (CPU side, 32-bit), uploaded to a streaming
+// texture and drawn with SDL_Renderer (Metal), with the touch overlay on top.
+static SDL_Renderer *sdl_renderer;
+static SDL_Texture *sdl_texture;
+static SDL_Rect sdl_gamerect;
+
+static void ios_updategamerect(void)
+{
+    int outw = 0, outh = 0;
+    SDL_GetRendererOutputSize(sdl_renderer, &outw, &outh);
+
+    if (!xres || !yres || !outw || !outh)
+    {
+        sdl_gamerect = { 0, 0, outw, outh };
+        return;
+    }
+
+    // aspect-correct fit, centered
+    if ((int64_t)outw * yres > (int64_t)outh * xres)
+    {
+        int const w = (int)((int64_t)outh * xres / yres);
+        sdl_gamerect = { (outw - w) >> 1, 0, w, outh };
+    }
+    else
+    {
+        int const h = (int)((int64_t)outw * yres / xres);
+        sdl_gamerect = { 0, (outh - h) >> 1, outw, h };
+    }
+}
+
+// Window (points) -> game framebuffer (xres/yres) coordinates
+static void ios_windowtogame(float wx, float wy, int32_t *gx, int32_t *gy)
+{
+    int winw = 1, winh = 1, outw = 1, outh = 1;
+    SDL_GetWindowSize(sdl_window, &winw, &winh);
+    SDL_GetRendererOutputSize(sdl_renderer, &outw, &outh);
+
+    float const px = wx * outw / max(winw, 1), py = wy * outh / max(winh, 1);
+
+    *gx = clamp((int32_t)((px - sdl_gamerect.x) * xres / max(sdl_gamerect.w, 1)), 0, xres - 1);
+    *gy = clamp((int32_t)((py - sdl_gamerect.y) * yres / max(sdl_gamerect.h, 1)), 0, yres - 1);
+}
+
+static int ios_setupsurface(int32_t x, int32_t y)
+{
+    if (sdl_surface && sdl_surface->w == x && sdl_surface->h == y && sdl_texture)
+        return 0;
+
+    if (sdl_texture)
+        SDL_DestroyTexture(sdl_texture);
+    if (sdl_surface)
+        SDL_FreeSurface(sdl_surface);
+
+    sdl_texture = NULL;
+    sdl_surface = SDL_CreateRGBSurfaceWithFormat(0, x, y, 32, SDL_PIXELFORMAT_ARGB8888);
+
+    if (!sdl_surface)
+    {
+        LOG_F(ERROR, "Unable to create %dx%d framebuffer: %s.", x, y, SDL_GetError());
+        return -1;
+    }
+
+    sdl_texture = SDL_CreateTexture(sdl_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, x, y);
+
+    if (!sdl_texture)
+    {
+        LOG_F(ERROR, "Unable to create %dx%d texture: %s.", x, y, SDL_GetError());
+        return -1;
+    }
+
+    // Native-resolution (or integer-scaled) output stays sharp; anything else gets filtered.
+    int outw = 0, outh = 0;
+    SDL_GetRendererOutputSize(sdl_renderer, &outw, &outh);
+    bool const integerScale = (outh % y == 0) && (outw % x == 0);
+    SDL_SetTextureScaleMode(sdl_texture, integerScale ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+
+    return 0;
+}
 #endif
 
 static int32_t vsync_renderlayer;
@@ -175,7 +261,7 @@ int32_t wm_msgbox(const char *name, const char *fmt, ...)
 #elif defined _WIN32
     MessageBox(win_gethwnd(),buf,name,MB_OK|MB_TASKMODAL);
     return 0;
-#elif defined EDUKE32_TOUCH_DEVICES
+#elif defined EDUKE32_TOUCH_DEVICES && !defined EDUKE32_IOS
     LOG_F(INFO, "wm_msgbox called. Message: %s: %s",name,buf);
     return 0;
 #elif defined GEKKO
@@ -222,7 +308,7 @@ int32_t wm_ynbox(const char *name, const char *fmt, ...)
 #elif defined _WIN32
     auto result = MessageBox(win_gethwnd(),buf,name,MB_YESNO|MB_ICONQUESTION|MB_TASKMODAL);
     return result == IDYES;
-#elif defined EDUKE32_TOUCH_DEVICES
+#elif defined EDUKE32_TOUCH_DEVICES && !defined EDUKE32_IOS
     LOG_F(WARNING, "wm_ynbox called, this is bad! Message: %s: %s",name,buf);
     LOG_F(INFO, "Returning false..");
     return 0;
@@ -447,6 +533,16 @@ void sdlayer_sethints()
 #if defined SDL_HINT_MOUSE_RELATIVE_SCALING
     SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SCALING, "0");
 #endif
+#ifdef EDUKE32_IOS
+    // fingers are handled by touchcontrols.cpp; real mice/trackpads still produce mouse events
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
+    SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "playback");
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
+    SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
+#endif
 }
 
 #ifdef _WIN32
@@ -458,6 +554,8 @@ extern "C" int eduke32_android_main(int argc, char const *argv[]);
 int eduke32_android_main(int argc, char const *argv[])
 #elif defined GEKKO
 int SDL_main(int argc, char *argv[])
+#elif defined EDUKE32_IOS
+int eduke32_ios_main(int argc, char *argv[])
 #else
 int main(int argc, char *argv[])
 #endif
@@ -505,6 +603,10 @@ int main(int argc, char *argv[])
 #endif
 
     sdlayer_sethints();
+
+#ifdef EDUKE32_IOS
+    ios_checkgamedata();
+#endif
 
 #ifdef USE_OPENGL
     char *argp;
@@ -1275,7 +1377,12 @@ static void SetWindowGrab(SDL_Window *pWindow, int const clipToWindow)
 #endif
 static inline char grabmouse_low(char a)
 {
-#if !defined EDUKE32_TOUCH_DEVICES
+#if defined EDUKE32_IOS
+    // Fails when no pointing device is attached; pretend it worked so the grab
+    // state still tracks the game and a trackpad/mouse connected later just works.
+    SDL_SetRelativeMouseMode(a ? SDL_TRUE : SDL_FALSE);
+    return 0;
+#elif !defined EDUKE32_TOUCH_DEVICES
     /* FIXME: Maybe it's better to make sure that grabmouse_low
        is called only when a window is ready?                */
     if (sdl_window)
@@ -1299,7 +1406,7 @@ void mouseGrabInput(bool grab)
 
     if (appactive && g_mouseEnabled)
     {
-#if !defined EDUKE32_TOUCH_DEVICES
+#if !defined EDUKE32_TOUCH_DEVICES || defined EDUKE32_IOS
         if ((grab != g_mouseGrabbed) && !grabmouse_low(grab))
 #endif
             g_mouseGrabbed = grab;
@@ -1399,6 +1506,32 @@ void videoGetModes(int display)
     }
 
     validmodecnt = 0;
+
+#ifdef EDUKE32_IOS
+    {
+        int32_t pixw, pixh;
+        ios_getscreensize(&pixw, &pixh, NULL, NULL);
+
+        static float const scales[] = { 1.f, 0.75f, 0.5f, 0.375f, 0.25f };
+
+        for (float const sc : scales)
+        {
+            int32_t const w = ((int32_t)(pixw * sc)) & ~1, h = ((int32_t)(pixh * sc)) & ~1;
+
+            if (SDL_CHECKMODE(w, h))
+                SDL_ADDMODE(w, h, 8, 1);
+        }
+
+        UNREFERENCED_PARAMETER(maxx);
+        UNREFERENCED_PARAMETER(maxy);
+        UNREFERENCED_PARAMETER(dispmode);
+        UNREFERENCED_PARAMETER(i);
+
+        qsort((void *)validmode, validmodecnt, sizeof(struct validmode_t), &sortmodes);
+        modeschecked = 1;
+        return;
+    }
+#endif
 
     // do fullscreen modes first
     for (i = 0; i < SDL_GetNumDisplayModes(display); i++)
@@ -1543,6 +1676,17 @@ static void destroy_window_resources()
     if (sdl_context)
         SDL_GL_DeleteContext(sdl_context);
     sdl_context = NULL;
+#ifdef EDUKE32_IOS
+    if (sdl_texture)
+        SDL_DestroyTexture(sdl_texture);
+    sdl_texture = NULL;
+    if (sdl_surface)
+        SDL_FreeSurface(sdl_surface);
+    sdl_surface = NULL;
+    if (sdl_renderer)
+        SDL_DestroyRenderer(sdl_renderer);
+    sdl_renderer = NULL;
+#endif
     if (sdl_window)
         SDL_DestroyWindow(sdl_window);
     sdl_window = NULL;
@@ -1694,6 +1838,12 @@ int setvideomode_sdlcommonpost(int32_t x, int32_t y, int32_t c, int32_t fs, int3
     modechange = 1;
     videomodereset = 0;
 
+#ifdef EDUKE32_IOS
+    if (ios_setupsurface(x, y))
+        return -1;
+    ios_updategamerect();
+#endif
+
 #ifdef USE_OPENGL
     if (!nogl)
         sdlayer_setvideomode_opengl();
@@ -1744,6 +1894,7 @@ int setvideomode_sdlcommonpost(int32_t x, int32_t y, int32_t c, int32_t fs, int3
     int const matchedResolution = (desktopmode.w == x && desktopmode.h == y);
     int const borderless = (r_borderless == 1 || (r_borderless == 2 && matchedResolution)) ? SDL_WINDOW_BORDERLESS : 0;
 
+#ifndef EDUKE32_IOS
     if (fs)
     {
         SDL_DisplayMode dispmode = { 0, x, y, maxrefreshfreq, nullptr }, newmode;
@@ -1765,6 +1916,8 @@ int setvideomode_sdlcommonpost(int32_t x, int32_t y, int32_t c, int32_t fs, int3
         }
     }
 
+#endif
+
     static double lastrefreshfreq;
 
     if (refreshfreq != lastrefreshfreq)
@@ -1773,6 +1926,7 @@ int setvideomode_sdlcommonpost(int32_t x, int32_t y, int32_t c, int32_t fs, int3
         lastrefreshfreq = refreshfreq;
     }
 
+#ifndef EDUKE32_IOS
     SDL_SetWindowSize(sdl_window, x, y);
 
     if (fs)
@@ -1800,6 +1954,7 @@ int setvideomode_sdlcommonpost(int32_t x, int32_t y, int32_t c, int32_t fs, int3
     }
 
     SDL_FlushEvent(SDL_WINDOWEVENT);
+#endif // EDUKE32_IOS
 #endif
 
     videoFadePalette(palfadergb.r, palfadergb.g, palfadergb.b, palfadedelta);
@@ -1917,6 +2072,16 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
 #endif  // defined USE_OPENGL
     {
         // init
+#ifdef EDUKE32_IOS
+        (void)borderless;
+        sdl_window = SDL_CreateWindow("", 0, 0, x, y, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
+        if (!sdl_window)
+            SDL2_VIDEO_ERR("SDL_CreateWindow");
+
+        sdl_renderer = SDL_CreateRenderer(sdl_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        if (!sdl_renderer)
+            SDL2_VIDEO_ERR("SDL_CreateRenderer");
+#else
         sdl_window = SDL_CreateWindow("", g_windowPosValid ? g_windowPos.x : (int)SDL_WINDOWPOS_CENTERED_DISPLAY(display),
                                           g_windowPosValid ? g_windowPos.y : (int)SDL_WINDOWPOS_CENTERED_DISPLAY(display), x, y,
                                       SDL_WINDOW_RESIZABLE | borderless);
@@ -1926,6 +2091,7 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
         sdl_surface = SDL_GetWindowSurface(sdl_window);
         if (!sdl_surface)
             SDL2_VIDEO_ERR("SDL_GetWindowSurface");
+#endif
     }
 
     setvideomode_sdlcommonpost(x, y, c, fs, regrab);
@@ -2256,7 +2422,15 @@ void videoShowFrame(int32_t w)
     if (SDL_MUSTLOCK(sdl_surface)) SDL_LockSurface(sdl_surface);
     softsurface_blitBuffer((uint32_t*) sdl_surface->pixels, sdl_surface->format->BitsPerPixel);
     if (SDL_MUSTLOCK(sdl_surface)) SDL_UnlockSurface(sdl_surface);
-#if SDL_MAJOR_VERSION >= 2
+#if defined EDUKE32_IOS
+    ios_updategamerect();
+    SDL_UpdateTexture(sdl_texture, NULL, sdl_surface->pixels, sdl_surface->pitch);
+    SDL_SetRenderDrawColor(sdl_renderer, 0, 0, 0, 255);
+    SDL_RenderClear(sdl_renderer);
+    SDL_RenderCopy(sdl_renderer, sdl_texture, NULL, &sdl_gamerect);
+    touch_render(sdl_renderer, &sdl_gamerect);
+    SDL_RenderPresent(sdl_renderer);
+#elif SDL_MAJOR_VERSION >= 2
     if (SDL_UpdateWindowSurface(sdl_window))
     {
         // If a fullscreen X11 window is minimized then this may be required.
@@ -2412,9 +2586,15 @@ int32_t handleevents_sdlcommon(SDL_Event *ev)
 {
     switch (ev->type)
     {
-#if !defined EDUKE32_IOS
+#if 1 // was !EDUKE32_IOS; iOS now uses this path for real mice/trackpads
         case SDL_MOUSEMOTION:
-#ifndef GEKKO
+#if defined EDUKE32_IOS
+            if (ev->motion.which == SDL_TOUCH_MOUSEID)
+                break;
+            ios_windowtogame(ev->motion.x, ev->motion.y, &g_mouseAbs.x, &g_mouseAbs.y);
+            touch_notifyHardwareInput();
+            fallthrough__;
+#elif !defined GEKKO
             g_mouseAbs.x = ev->motion.x;
             g_mouseAbs.y = ev->motion.y;
             fallthrough__;
@@ -2443,6 +2623,13 @@ int32_t handleevents_sdlcommon(SDL_Event *ev)
         case SDL_MOUSEBUTTONUP:
         {
             int32_t j;
+
+#if defined EDUKE32_IOS
+            if (ev->button.which == SDL_TOUCH_MOUSEID)
+                break;
+            ios_windowtogame(ev->button.x, ev->button.y, &g_mouseAbs.x, &g_mouseAbs.y);
+            touch_notifyHardwareInput();
+#endif
 
             // some of these get reordered to match winlayer
             switch (ev->button.button)
@@ -2487,7 +2674,8 @@ int32_t handleevents_sdlcommon(SDL_Event *ev)
                 g_mouseCallback(j+1, ev->button.state == SDL_PRESSED);
             break;
         }
-#else
+#endif
+#if 0 // old iOS finger-as-mouse path; fingers are handled by touchcontrols.cpp
 # if SDL_MAJOR_VERSION >= 2
         case SDL_FINGERUP:
             g_mouseClickState = MOUSE_RELEASED;
@@ -2598,6 +2786,30 @@ int32_t handleevents_pollsdl(void)
 
     while (SDL_PollEvent(&ev))
     {
+#ifdef EDUKE32_IOS
+        switch (ev.type)
+        {
+            case SDL_APP_WILLENTERBACKGROUND:
+            case SDL_APP_DIDENTERBACKGROUND:
+                // no GPU work allowed while backgrounded
+                sdl_minimized = true;
+                appactive = 0;
+                continue;
+            case SDL_APP_WILLENTERFOREGROUND:
+            case SDL_APP_DIDENTERFOREGROUND:
+                sdl_minimized = false;
+                appactive = 1;
+                continue;
+            case SDL_KEYDOWN:
+            case SDL_KEYUP:
+            case SDL_MOUSEWHEEL:
+                touch_notifyHardwareInput();
+                break;
+        }
+
+        if (touch_handleEvent(&ev))
+            continue;
+#endif
         if (g_ImGui_IO)
         {
             if (g_ImGui_IO->WantCaptureKeyboard && (ev.type == SDL_TEXTINPUT || ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP))
@@ -2842,6 +3054,9 @@ int32_t handleevents_pollsdl(void)
                         break;
                     }
                     case SDL_WINDOWEVENT_RESIZED:
+#ifdef EDUKE32_IOS
+                        break;
+#endif
                         if (fullscreen) break;
                         sdl_resize = { ev.window.data1 & ~1, ev.window.data2 & ~1 };
                         break;

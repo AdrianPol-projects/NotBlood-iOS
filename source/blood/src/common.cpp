@@ -115,7 +115,8 @@ void G_ExtInit(void)
 {
     char cwd[BMAX_PATH];
 
-#ifdef EDUKE32_OSX
+#if defined EDUKE32_OSX || defined EDUKE32_IOS
+    // iOS: notblood.pk3 ships inside the app bundle
     char *appdir = Bgetappdir();
     addsearchpath(appdir);
     Xfree(appdir);

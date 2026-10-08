@@ -41,6 +41,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "trig.h"
 #include "view.h"
 #include "weapon.h"
+#ifdef EDUKE32_IOS
+#include "touchcontrols.h"
+#endif
 
 
 int32_t ctrlCheckAllInput(void)
@@ -674,6 +677,36 @@ void ctrlGetInput(void)
             gCenterViewOnDrop = 1;
         }
     }
+
+#ifdef EDUKE32_IOS
+    {
+        // on-screen stick + finger look (see touchcontrols.cpp)
+        TouchInput touch;
+        touch_getInput(&touch);
+
+        if (MIRRORMODE & 1)
+            touch.strafe = -touch.strafe, touch.yaw = -touch.yaw;
+        if (MIRRORMODE & 2)
+            touch.pitch = -touch.pitch;
+
+        int const touchMove = (1 + (run | touch.run)) << 10;
+        int const targetForward = (int)lrintf(touch.forward * touchMove);
+        int const targetStrafe = (int)lrintf(-touch.strafe * touchMove);
+
+        // behaves like holding a movement key, scaled by stick deflection
+        if (targetForward && klabs(gInput.forward) < klabs(targetForward))
+            input.forward += targetForward - gInput.forward;
+        if (targetStrafe && klabs(gInput.strafe) < klabs(targetStrafe))
+            input.strafe += targetStrafe - gInput.strafe;
+
+        if (touch.forward != 0.f || touch.strafe != 0.f)
+            gInput.syncFlags.run |= run | touch.run;
+
+        // yaw: degrees -> build angle units (2048 per turn); pitch: horiz units, gViewLook += q16mlook<<3
+        input.q16turn = fix16_sadd(input.q16turn, fix16_from_float(touch.yaw * (2048.f / 360.f)));
+        input.q16mlook = fix16_sadd(input.q16mlook, fix16_from_float(touch.pitch * (1.f / 8.f)));
+    }
+#endif
 
     if (KB_KeyPressed(sc_Pause)) // 0xc5 in disassembly
     {

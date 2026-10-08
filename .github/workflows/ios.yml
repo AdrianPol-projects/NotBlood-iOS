@@ -1,5 +1,5 @@
 ---
-name: iOS IPA
+name: iOS IPA build
 
 'on':
   push:

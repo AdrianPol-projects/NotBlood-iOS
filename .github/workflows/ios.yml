@@ -82,9 +82,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete ios-latest --yes --cleanup-tag || true
-          gh release create ios-latest NotBlood.ipa \
-            --target "${GITHUB_SHA}" \
-            --prerelease \
-            --title "NotBlood for iPad (build ${{ github.run_number }})" \
-            --notes "Unsigned IPA built from ${GITHUB_SHA}. Sign/sideload with Signulous, Sideloadly or AltStore. See platform/iOS/README.md."
+          # Runs can be queued late; never let an older commit replace a newer IPA.
+          HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}" -q .sha)
+          if [ "$HEAD_SHA" != "$GITHUB_SHA" ]; then
+            echo "Branch head is $HEAD_SHA, this run built $GITHUB_SHA - not publishing."
+            exit 0
+          fi
+          TITLE="NotBlood for iPad (build ${{ github.run_number }})"
+          NOTES="Unsigned IPA built from ${GITHUB_SHA}. Sign/sideload with Signulous, Sideloadly or AltStore. Copy your Blood files to Files > On My iPad > NotBlood. See platform/iOS/README.md."
+          # Replace the asset in place so the release is never left empty.
+          if gh release view ios-latest >/dev/null 2>&1; then
+            gh release upload ios-latest NotBlood.ipa --clobber
+            gh release edit ios-latest --title "$TITLE" --notes "$NOTES" --prerelease
+          else
+            gh release create ios-latest NotBlood.ipa --target "$GITHUB_SHA" --prerelease --title "$TITLE" --notes "$NOTES"
+          fi

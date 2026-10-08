@@ -97,17 +97,28 @@ static int vsync_unsupported;
 #endif
 
 #ifdef EDUKE32_IOS
-// iOS has no window surface worth using and no desktop GL: the classic renderer's
-// output is converted into sdl_surface (CPU side, 32-bit), uploaded to a streaming
-// texture and drawn with SDL_Renderer (Metal), with the touch overlay on top.
+// Normally the engine's OpenGL renderers run through gl4es (desktop GL 2.1 on top of
+// OpenGL ES 2.0, see ios_initgl4es()). If that is unavailable we fall back to this:
+// the classic renderer's output is converted into sdl_surface (CPU side, 32-bit),
+// uploaded to a streaming texture and drawn with SDL_Renderer (Metal).
+// Either way the touch overlay is drawn on top before presenting.
 static SDL_Renderer *sdl_renderer;
 static SDL_Texture *sdl_texture;
 static SDL_Rect sdl_gamerect;
 
+static void ios_getoutputsize(int *outw, int *outh)
+{
+    *outw = *outh = 0;
+    if (sdl_renderer)
+        SDL_GetRendererOutputSize(sdl_renderer, outw, outh);
+    else if (sdl_window)
+        SDL_GL_GetDrawableSize(sdl_window, outw, outh);
+}
+
 static void ios_updategamerect(void)
 {
     int outw = 0, outh = 0;
-    SDL_GetRendererOutputSize(sdl_renderer, &outw, &outh);
+    ios_getoutputsize(&outw, &outh);
 
     if (!xres || !yres || !outw || !outh)
     {
@@ -133,7 +144,7 @@ static void ios_windowtogame(float wx, float wy, int32_t *gx, int32_t *gy)
 {
     int winw = 1, winh = 1, outw = 1, outh = 1;
     SDL_GetWindowSize(sdl_window, &winw, &winh);
-    SDL_GetRendererOutputSize(sdl_renderer, &outw, &outh);
+    ios_getoutputsize(&outw, &outh);
 
     float const px = wx * outw / max(winw, 1), py = wy * outh / max(winh, 1);
 
@@ -840,6 +851,13 @@ int32_t initsystem(void)
             LOG_F(ERROR, "Failed loading OpenGL driver: %s; all OpenGL modes are unavailable.", SDL_GetError());
             nogl = 1;
         }
+# ifdef EDUKE32_IOS
+        else if (ios_glsafemode())
+        {
+            LOG_F(WARNING, "OpenGL disabled (DISABLE_OPENGL.txt); using the software renderer.");
+            nogl = 1;
+        }
+# endif
 #endif
 
 #ifndef _WIN32
@@ -862,6 +880,9 @@ int32_t initsystem(void)
 //
 void uninitsystem(void)
 {
+#ifdef EDUKE32_IOS
+    ios_glstartupok(); // a clean exit is not a GL startup crash
+#endif
     uninitinput();
     timerUninit();
 
@@ -1515,6 +1536,15 @@ void videoGetModes(int display)
 
         static float const scales[] = { 1.f, 0.75f, 0.5f, 0.375f, 0.25f };
 
+# ifdef USE_OPENGL
+        if (!nogl)
+        {
+            // GL output is always native; lower classic-renderer resolutions use the upscale option
+            SDL_ADDMODE(pixw & ~1, pixh & ~1, 8, 1);
+            SDL_ADDMODE(pixw & ~1, pixh & ~1, 32, 1);
+        }
+        else
+# endif
         for (float const sc : scales)
         {
             int32_t const w = ((int32_t)(pixw * sc)) & ~1, h = ((int32_t)(pixh * sc)) & ~1;
@@ -1840,8 +1870,13 @@ int setvideomode_sdlcommonpost(int32_t x, int32_t y, int32_t c, int32_t fs, int3
     videomodereset = 0;
 
 #ifdef EDUKE32_IOS
-    if (ios_setupsurface(x, y))
-        return -1;
+# ifdef USE_OPENGL
+    if (nogl)
+# endif
+    {
+        if (ios_setupsurface(x, y))
+            return -1;
+    }
     ios_updategamerect();
 #endif
 
@@ -2027,6 +2062,40 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
               { SDL_GL_DEPTH_SIZE, 24 },
           };
 
+#ifdef EDUKE32_IOS
+        // OpenGL ES 2.0 context; gl4es provides the desktop GL 2.1 API the renderers expect
+        (void)sdlayer_gl_attributes;
+        (void)i;
+        (void)borderless;
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
+        sdl_window = SDL_CreateWindow("", 0, 0, x, y,
+                                      SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
+
+        if (sdl_window)
+            sdl_context = SDL_GL_CreateContext(sdl_window);
+
+        if (!sdl_window || !sdl_context)
+        {
+            LOG_F(ERROR, "Unable to set video mode: %s failed: %s.", sdl_window ? "SDL_GL_CreateContext" : "SDL_GL_CreateWindow",  SDL_GetError());
+            nogl = 1;
+        }
+        else if (ios_initgl4es(sdl_window))
+        {
+            LOG_F(ERROR, "gl4es initialization failed; falling back to the software renderer.");
+            nogl = 1;
+        }
+        else
+            gladLoadGLLoader(ios_glGetProcAddress);
+#else
         SDL_GL_ATTRIBUTES(i, sdlayer_gl_attributes);
 
         /* HACK: changing SDL GL attribs only works before surface creation,
@@ -2051,6 +2120,7 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
 #else
         gladLoadGLES2Loader(SDL_GL_GetProcAddress);
 #endif
+#endif // EDUKE32_IOS
         if (GLVersion.major < 2)
         {
             LOG_F(ERROR, "Video driver does not support OpenGL version 2 or greater; all OpenGL modes are unavailable.");
@@ -2067,7 +2137,9 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
         SDL_GL_SetSwapInterval(sdlayer_getswapinterval(vsync_renderlayer));
         vsync_renderlayer = sdlayer_checkvsync(vsync_renderlayer);
 
+#ifndef EDUKE32_IOS // unused by the game, and imgui's GL3 backend doesn't fit gl4es
         engineSetupImGui();
+#endif
     }
     else
 #endif  // defined USE_OPENGL
@@ -2348,6 +2420,18 @@ void videoShowFrame(int32_t w)
         }
 #endif
 
+#ifdef EDUKE32_IOS
+        {
+            int outw, outh;
+            SDL_GL_GetDrawableSize(sdl_window, &outw, &outh);
+            touch_renderGL(outw, outh);
+
+            // survived the risky part (context, gl4es, shader compiles, first frames)
+            static int glFramesShown;
+            if (++glFramesShown == 120)
+                ios_glstartupok();
+        }
+#endif
         {
             MICROPROFILE_SCOPEI("Engine", "SDL_GL_SwapWindow", MP_GREEN3);
 #if SDL_MAJOR_VERSION >= 2
@@ -2792,14 +2876,32 @@ int32_t handleevents_pollsdl(void)
         {
             case SDL_APP_WILLENTERBACKGROUND:
             case SDL_APP_DIDENTERBACKGROUND:
-                // no GPU work allowed while backgrounded
-                sdl_minimized = true;
+                // iOS kills apps that touch the GPU in the background, and there is nothing
+                // to do there anyway: park the whole game until we are active again.
+#ifdef USE_OPENGL
+                if (!nogl && sdl_context)
+                    glFinish();
+#endif
                 appactive = 0;
+                if (g_mouseGrabbed)
+                    grabmouse_low(0);
+                while (SDL_WaitEvent(&ev))
+                {
+                    if (ev.type == SDL_APP_DIDENTERFOREGROUND)
+                        break;
+                    if (ev.type == SDL_QUIT || ev.type == SDL_APP_TERMINATING)
+                    {
+                        quitevent = 1;
+                        break;
+                    }
+                }
+                appactive = 1;
+                if (g_mouseGrabbed)
+                    grabmouse_low(1);
+                timerUpdateClock();
                 continue;
             case SDL_APP_WILLENTERFOREGROUND:
             case SDL_APP_DIDENTERFOREGROUND:
-                sdl_minimized = false;
-                appactive = 1;
                 continue;
             case SDL_KEYDOWN:
             case SDL_KEYUP:

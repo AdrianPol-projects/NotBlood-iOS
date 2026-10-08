@@ -19,6 +19,10 @@
 #define LIBASYNC_IMPLEMENTATION
 #include "libasync_config.h"
 
+#ifdef EDUKE32_IOS
+# include <unistd.h>
+#endif
+
 // video
 #ifdef _WIN32
 #include "winbits.h"
@@ -916,6 +920,17 @@ int engineFPSLimit(bool const throttle)
 
         return true;
     }
+
+#ifdef EDUKE32_IOS
+    // The game loop polls this as fast as it can until the next frame is due, which keeps a
+    // core at 100% for nothing. On a tablet that is heat and battery, so nap until shortly
+    // before the frame instead (input is still polled every iteration).
+    uint64_t const remaining = g_frameDelay - (frameTicks - lastFrameTicks);
+    uint64_t const usec = remaining * 1000000 / timerGetNanoTickRate();
+
+    if (usec > 1500)
+        usleep((useconds_t)(usec - 1000));
+#endif
 
     return false;
 }

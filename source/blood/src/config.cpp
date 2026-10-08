@@ -1076,6 +1076,15 @@ int CONFIG_ReadSetup(void)
 
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "MaxRefreshFreq", (int32_t *)&maxrefreshfreq);
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "ScreenBPP", &gSetup.bpp);
+#ifdef EDUKE32_IOS
+    {
+        // the first iOS builds only had the classic renderer; move those configs to Polymost once
+        int32_t polymostDefault = 0;
+        SCRIPT_GetNumber(scripthandle, "Screen Setup", "iOSPolymostDefault", &polymostDefault);
+        if (!polymostDefault)
+            gSetup.bpp = 32;
+    }
+#endif
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "ScreenHeight", &gSetup.ydim);
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "ScreenMode", &gSetup.fullscreen);
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "ScreenWidth", &gSetup.xdim);
@@ -1183,6 +1192,9 @@ void CONFIG_WriteSetup(uint32_t flags)
 #endif
 
     SCRIPT_PutNumber(scripthandle, "Screen Setup", "ScreenBPP", gSetup.bpp, FALSE, FALSE);
+#ifdef EDUKE32_IOS
+    SCRIPT_PutNumber(scripthandle, "Screen Setup", "iOSPolymostDefault", 1, FALSE, FALSE);
+#endif
     SCRIPT_PutNumber(scripthandle, "Screen Setup", "ScreenHeight", gSetup.ydim, FALSE, FALSE);
     SCRIPT_PutNumber(scripthandle, "Screen Setup", "ScreenMode", gSetup.fullscreen, FALSE, FALSE);
     SCRIPT_PutNumber(scripthandle, "Screen Setup", "ScreenWidth", gSetup.xdim, FALSE, FALSE);

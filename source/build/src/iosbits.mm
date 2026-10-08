@@ -2,10 +2,23 @@
 
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <OpenGLES/ES2/gl.h>
 
 #include "compat.h"
 #include "iosbits.h"
+#include "SDL_syswm.h"
 
+#ifdef USE_OPENGL
+// from gl4es' include/gl4esinit.h (not on the include path: its GL headers would shadow the system ones)
+extern "C" {
+void set_getprocaddress(void *(*new_proc_address)(const char *));
+void set_getmainfbsize(void (*new_getMainFBSize)(int *width, int *height));
+void initialize_gl4es(void);
+void *gl4es_GetProcAddress(const char *name);
+}
+#endif
+
+#include <dlfcn.h>
 #include <unistd.h>
 
 static const char kReadmeName[] = "PUT BLOOD FILES HERE.txt";
@@ -60,6 +73,112 @@ void ios_getscreensize(int32_t *pixelw, int32_t *pixelh, int32_t *pointw, int32_
         if (pointw) *pointw = max(pw, ph);
         if (pointh) *pointh = min(pw, ph);
     }
+}
+
+#ifdef USE_OPENGL
+//
+// gl4es glue: the engine talks desktop GL 2.1 to gl4es, gl4es talks GLES 2.0 to iOS.
+//
+
+// SDL renders into its own framebuffer object on iOS; "framebuffer 0" does not exist.
+// gl4es binds 0 whenever it means the window, so redirect that to SDL's FBO.
+static GLuint s_defaultFramebuffer;
+static void (*s_glBindFramebuffer)(GLenum, GLuint);
+static SDL_Window *s_glWindow;
+
+static void ios_bindFramebuffer(GLenum target, GLuint framebuffer)
+{
+    s_glBindFramebuffer(target, framebuffer ? framebuffer : s_defaultFramebuffer);
+}
+
+static void *ios_glesGetProcAddress(const char *name)
+{
+    if (!strcmp(name, "glBindFramebuffer") || !strcmp(name, "glBindFramebufferOES"))
+        return (void *)ios_bindFramebuffer;
+
+    return dlsym(RTLD_DEFAULT, name);
+}
+
+static void ios_getMainFBSize(int *width, int *height)
+{
+    SDL_GL_GetDrawableSize(s_glWindow, width, height);
+}
+
+int ios_initgl4es(SDL_Window *window)
+{
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+
+    if (!SDL_GetWindowWMInfo(window, &info) || info.subsystem != SDL_SYSWM_UIKIT)
+        return -1;
+
+    s_glWindow = window;
+    s_defaultFramebuffer = info.info.uikit.framebuffer;
+    s_glBindFramebuffer = (void (*)(GLenum, GLuint))dlsym(RTLD_DEFAULT, "glBindFramebuffer");
+
+    if (!s_glBindFramebuffer)
+        return -1;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, s_defaultFramebuffer);
+
+    static bool initialized;
+    if (!initialized)
+    {
+        // no LIBGL_* environment tweaks needed; gl4es probes the current context for extensions
+        set_getprocaddress(ios_glesGetProcAddress);
+        set_getmainfbsize(ios_getMainFBSize);
+        initialize_gl4es();
+        initialized = true;
+    }
+
+    return 0;
+}
+
+void *ios_glGetProcAddress(const char *name)
+{
+    return gl4es_GetProcAddress(name);
+}
+#endif
+
+//
+// GL crash guard
+//
+static char const kNoGLFile[] = "DISABLE_OPENGL.txt";
+static char const kGLStartingFile[] = ".opengl_starting";
+
+bool ios_glsafemode(void)
+{
+    if (access(kNoGLFile, F_OK) == 0)
+        return true;
+
+    if (access(kGLStartingFile, F_OK) == 0)
+    {
+        // the previous launch never got its first frames out with OpenGL
+        unlink(kGLStartingFile);
+
+        if (FILE *fp = fopen(kNoGLFile, "w"))
+        {
+            fputs("NotBlood crashed while starting its OpenGL renderer, so it now uses the software\n"
+                  "renderer (no true 3D look up/down). Delete this file to try OpenGL again.\n", fp);
+            fclose(fp);
+        }
+
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "OpenGL renderer disabled",
+                                 "NotBlood crashed while starting its OpenGL renderer last time, so it will use the "
+                                 "software renderer from now on.\n\nTo try OpenGL again, delete DISABLE_OPENGL.txt "
+                                 "in Files > On My iPad > NotBlood.", NULL);
+        return true;
+    }
+
+    if (FILE *fp = fopen(kGLStartingFile, "w"))
+        fclose(fp);
+
+    return false;
+}
+
+void ios_glstartupok(void)
+{
+    unlink(kGLStartingFile);
 }
 
 static bool ios_havegamedata(void)

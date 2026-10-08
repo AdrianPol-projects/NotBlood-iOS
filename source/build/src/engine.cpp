@@ -29,6 +29,10 @@
 #include "softsurface.h"
 #include "vfs.h"
 
+#ifdef EDUKE32_IOS
+# include "iosbits.h"
+#endif
+
 #ifdef USE_OPENGL
 # include "glad/glad.h"
 # include "glsurface.h"
@@ -12018,6 +12022,11 @@ int32_t videoSetGameMode(char davidoption, int32_t daupscaledxdim, int32_t daups
 {
 #ifdef USE_OPENGL
     if (nogl) dabpp = 8;
+#endif
+#if defined EDUKE32_IOS && defined USE_OPENGL
+    // the GL drawable is always the full native screen on iOS
+    if (!nogl)
+        ios_getscreensize(&daupscaledxdim, &daupscaledydim, NULL, NULL);
 #endif
     daupscaledxdim = max(640, daupscaledxdim);
     daupscaledydim = max(400, daupscaledydim);

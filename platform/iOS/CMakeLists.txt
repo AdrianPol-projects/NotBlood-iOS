@@ -1,11 +1,13 @@
 # NotBlood for iOS / iPadOS
 #
-# Generates an Xcode project (software renderer + SDL2 Metal presentation + touch controls).
+# Generates an Xcode project: the engine's OpenGL renderers (Polymost, and the classic renderer's
+# GL blit) run through gl4es on OpenGL ES 2.0; SDL_Renderer/Metal is the fallback. Touch controls
+# are drawn on top in both cases.
 # See platform/iOS/README.md and .github/workflows/ios.yml.
 #
 #   cmake -S platform/iOS -B build-ios -G Xcode \
 #         -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-#         -DSDL2_SOURCE_DIR=/path/to/SDL2-2.32.x
+#         -DSDL2_SOURCE_DIR=/path/to/SDL2-2.32.x -DGL4ES_SOURCE_DIR=/path/to/gl4es
 #   cmake --build build-ios --config Release -- -sdk iphoneos CODE_SIGNING_ALLOWED=NO
 
 cmake_minimum_required(VERSION 3.22)
@@ -23,6 +25,7 @@ set(NOTBLOOD_BUNDLE_ID "com.notblood.ios" CACHE STRING "Bundle identifier (sidel
 set(NOTBLOOD_VERSION "1.0" CACHE STRING "CFBundleShortVersionString")
 set(NOTBLOOD_BUILD "1" CACHE STRING "CFBundleVersion")
 set(SDL2_SOURCE_DIR "" CACHE PATH "Path to an SDL 2.x source tree")
+set(GL4ES_SOURCE_DIR "" CACHE PATH "Path to a gl4es source tree (https://github.com/ptitSeb/gl4es)")
 
 get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 set(SRC "${ROOT}/source")
@@ -41,11 +44,29 @@ set(SDL2_DISABLE_SDL2MAIN ON CACHE BOOL "" FORCE)
 add_subdirectory("${SDL2_SOURCE_DIR}" SDL2 EXCLUDE_FROM_ALL)
 
 #
+# gl4es: desktop OpenGL 2.1 (fixed function + GLSL 1.20) on top of OpenGL ES 2.0
+#
+if(NOT GL4ES_SOURCE_DIR OR NOT EXISTS "${GL4ES_SOURCE_DIR}/src/gl/gl4es.c")
+    message(FATAL_ERROR "Set GL4ES_SOURCE_DIR to a gl4es source tree")
+endif()
+
+file(GLOB GL4ES_SOURCES "${GL4ES_SOURCE_DIR}/src/gl/*.c" "${GL4ES_SOURCE_DIR}/src/gl/wrap/*.c" "${GL4ES_SOURCE_DIR}/src/gl/math/*.c")
+list(APPEND GL4ES_SOURCES
+    "${GL4ES_SOURCE_DIR}/src/glx/hardext.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gl4es/gl4es_ios_compat.c")
+
+add_library(nb_gl4es STATIC ${GL4ES_SOURCES})
+target_compile_definitions(nb_gl4es PRIVATE NOX11 EGL_NO_X11 NOEGL STATICLIB NO_GBM NO_INIT_CONSTRUCTOR DEFAULT_ES=2)
+target_include_directories(nb_gl4es PRIVATE "${GL4ES_SOURCE_DIR}/include" "${GL4ES_SOURCE_DIR}/src" "${GL4ES_SOURCE_DIR}/src/glx")
+target_compile_options(nb_gl4es PRIVATE -std=gnu11 -O2 -w -include "${CMAKE_CURRENT_SOURCE_DIR}/gl4es/gl4es_ios_prefix.h")
+
+#
 # shared compile settings (mirrors Common.mak for: SDL2, classic renderer only, no asm, netcode on)
 #
 set(NB_DEFINES
     RENDERTYPESDL=1
     SDL_TARGET=2
+    USE_OPENGL
     SDL_MAIN_HANDLED
     NOASM
     HAVE_VORBIS
@@ -91,18 +112,29 @@ set(ENGINE_EXCLUDE
     build.cpp config.cpp sdlayer12.cpp sdlkeytrans.cpp
     startgtk.editor.cpp startwin.editor.cpp
     gtkbits.cpp dynamicgtk.cpp winbits.cpp winlayer.cpp rawinput.cpp wiibits.cpp
-    # OpenGL renderers (iOS has no desktop GL; classic renderer is used)
-    glbuild.cpp glsurface.cpp mdsprite.cpp polymer.cpp polymost.cpp tilepacker.cpp voxmodel.cpp
-    animvpx.cpp
+    # Polymer needs much more than GL 2.1; libvpx isn't built
+    polymer.cpp animvpx.cpp
 )
 foreach(f ${ENGINE_EXCLUDE})
     list(REMOVE_ITEM ENGINE_SOURCES "${SRC}/build/src/${f}")
 endforeach()
 list(APPEND ENGINE_SOURCES "${SRC}/build/src/iosbits.mm")
 
+# GLSL sources are embedded as strings (same as the GNUmakefile rule)
+foreach(shader polymost1Frag polymost1Vert)
+    set(shader_src "${SRC}/build/src/${shader}.glsl")
+    set(shader_out "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.glsl.cpp")
+    file(READ "${shader_src}" shader_text)
+    file(WRITE "${shader_out}" "extern char const *${shader};\nchar const *${shader} = R\"shader(${shader_text})shader\";\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${shader_src}")
+    list(APPEND ENGINE_SOURCES "${shader_out}")
+endforeach()
+
+list(APPEND ENGINE_SOURCES "${SRC}/glad/src/glad.c")
+
 # upstream builds its .c files as C++ (CPLUSPLUS=1 in Common.mak)
 file(GLOB ENGINE_C_SOURCES "${SRC}/build/src/*.c")
-set_source_files_properties(${ENGINE_C_SOURCES} PROPERTIES LANGUAGE CXX)
+set_source_files_properties(${ENGINE_C_SOURCES} "${SRC}/glad/src/glad.c" PROPERTIES LANGUAGE CXX)
 
 nb_library(nb_engine ${ENGINE_SOURCES})
 target_link_libraries(nb_engine PRIVATE nb_imgui)
@@ -117,7 +149,9 @@ nb_library(nb_imgui
     "${SRC}/imgui/src/imgui_tables.cpp"
     "${SRC}/imgui/src/imgui_widgets.cpp"
     "${SRC}/imgui/src/imgui_impl_sdl2.cpp"
+    "${SRC}/imgui/src/imgui_impl_opengl3.cpp" # referenced by sdlayer's GL path, never initialized on iOS
 )
+target_compile_definitions(nb_imgui PRIVATE IMGUI_IMPL_OPENGL_ES2)
 
 #
 # mact, audiolib, codecs
@@ -199,7 +233,7 @@ set_target_properties(NotBlood PROPERTIES
 )
 
 target_link_libraries(NotBlood PRIVATE
-    nb_engine nb_mact nb_audiolib nb_xmp nb_smacker nb_hmpplay nb_imgui
+    nb_engine nb_mact nb_audiolib nb_xmp nb_smacker nb_hmpplay nb_imgui nb_gl4es
     SDL2::SDL2-static
     "-framework AVFoundation"
     "-framework AudioToolbox"

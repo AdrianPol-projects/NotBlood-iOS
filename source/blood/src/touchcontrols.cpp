@@ -41,6 +41,10 @@ See the GNU General Public License for more details.
 #include "view.h"
 #include "touchcontrols.h"
 
+#ifdef USE_OPENGL
+#include "glbuild.h"
+#endif
+
 #include <math.h>
 
 extern char textfont[2048];
@@ -270,8 +274,14 @@ int   g_editSelected = -1;
 float g_pinchStartDist, g_pinchStartR;
 
 // rendering resources
+enum Backend { BACKEND_SDL, BACKEND_GL };
+
+Backend       g_backend;
 SDL_Renderer *g_renderer;
 SDL_Texture  *g_fontTexture;
+#ifdef USE_OPENGL
+GLuint        g_fontGLTexture;
+#endif
 
 //
 // helpers
@@ -469,6 +479,39 @@ SDL_Color rgba(int r, int g, int b, float a)
     return SDL_Color { (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)clamp((int)(a * 255.f), 0, 255) };
 }
 
+// All overlay drawing is triangles, optionally textured with the font atlas, submitted
+// either through SDL_Renderer (Metal fallback) or immediate-mode GL (gl4es path).
+void submitGeometry(bool textured, SDL_Vertex const *v, int nv, int const *idx, int ni)
+{
+    if (g_backend == BACKEND_SDL)
+    {
+        SDL_RenderGeometry(g_renderer, textured ? g_fontTexture : NULL, v, nv, idx, ni);
+        return;
+    }
+
+#ifdef USE_OPENGL
+    UNREFERENCED_PARAMETER(nv);
+
+    if (textured)
+    {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, g_fontGLTexture);
+    }
+    else
+        glDisable(GL_TEXTURE_2D);
+
+    glBegin(GL_TRIANGLES);
+    for (int i = 0; i < ni; i++)
+    {
+        auto const &vv = v[idx[i]];
+        glColor4ub(vv.color.r, vv.color.g, vv.color.b, vv.color.a);
+        glTexCoord2f(vv.tex_coord.x, vv.tex_coord.y);
+        glVertex2f(vv.position.x, vv.position.y);
+    }
+    glEnd();
+#endif
+}
+
 void fillCircle(float cx, float cy, float rad, SDL_Color c)
 {
     constexpr int kSeg = 48;
@@ -485,7 +528,7 @@ void fillCircle(float cx, float cy, float rad, SDL_Color c)
         idx[i * 3 + 2] = (i + 1) % kSeg + 1;
     }
 
-    SDL_RenderGeometry(g_renderer, NULL, v, kSeg + 1, idx, kSeg * 3);
+    submitGeometry(false, v, kSeg + 1, idx, kSeg * 3);
 }
 
 void ringCircle(float cx, float cy, float rad, float thick, SDL_Color c)
@@ -511,13 +554,20 @@ void ringCircle(float cx, float cy, float rad, float thick, SDL_Color c)
         idx[i * 6 + 5] = n * 2 + 1;
     }
 
-    SDL_RenderGeometry(g_renderer, NULL, v, kSeg * 2, idx, kSeg * 6);
+    submitGeometry(false, v, kSeg * 2, idx, kSeg * 6);
 }
 
 void fillRect(SDL_FRect const &r, SDL_Color c)
 {
-    SDL_SetRenderDrawColor(g_renderer, c.r, c.g, c.b, c.a);
-    SDL_RenderFillRectF(g_renderer, &r);
+    SDL_Vertex const v[4] =
+    {
+        { { r.x, r.y }, c, { 0, 0 } },
+        { { r.x + r.w, r.y }, c, { 0, 0 } },
+        { { r.x + r.w, r.y + r.h }, c, { 0, 0 } },
+        { { r.x, r.y + r.h }, c, { 0, 0 } },
+    };
+    int const idx[6] = { 0, 1, 2, 0, 2, 3 };
+    submitGeometry(false, v, 4, idx, 6);
 }
 
 void outlineRect(SDL_FRect const &r, float thick, SDL_Color c)
@@ -528,18 +578,10 @@ void outlineRect(SDL_FRect const &r, float thick, SDL_Color c)
     fillRect({ r.x + r.w - thick, r.y, thick, r.h }, c);
 }
 
-void ensureFont(void)
+// 16x16 grid of the engine's 8x8 font, white on transparent.
+// 0x00FFFFFF/0xFFFFFFFF read the same as ARGB8888 (SDL) and as R,G,B,A bytes (GL).
+void buildFontPixels(uint32_t *pixels, int pitch)
 {
-    if (g_fontTexture)
-        return;
-
-    SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(0, 128, 128, 32, SDL_PIXELFORMAT_ARGB8888);
-    if (!surf)
-        return;
-
-    auto pixels = (uint32_t *)surf->pixels;
-    int const pitch = surf->pitch / 4;
-
     for (int ch = 0; ch < 256; ch++)
     {
         int const gx = (ch & 15) * 8, gy = (ch >> 4) * 8;
@@ -550,15 +592,49 @@ void ensureFont(void)
                 pixels[(gy + row) * pitch + gx + col] = (bits & (0x80 >> col)) ? 0xFFFFFFFFu : 0x00FFFFFFu;
         }
     }
+}
 
-    g_fontTexture = SDL_CreateTextureFromSurface(g_renderer, surf);
-    SDL_FreeSurface(surf);
-
-    if (g_fontTexture)
+bool ensureFont(void)
+{
+    if (g_backend == BACKEND_SDL)
     {
-        SDL_SetTextureBlendMode(g_fontTexture, SDL_BLENDMODE_BLEND);
-        SDL_SetTextureScaleMode(g_fontTexture, SDL_ScaleModeNearest);
+        if (g_fontTexture)
+            return true;
+
+        SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(0, 128, 128, 32, SDL_PIXELFORMAT_ARGB8888);
+        if (!surf)
+            return false;
+
+        buildFontPixels((uint32_t *)surf->pixels, surf->pitch / 4);
+        g_fontTexture = SDL_CreateTextureFromSurface(g_renderer, surf);
+        SDL_FreeSurface(surf);
+
+        if (g_fontTexture)
+        {
+            SDL_SetTextureBlendMode(g_fontTexture, SDL_BLENDMODE_BLEND);
+            SDL_SetTextureScaleMode(g_fontTexture, SDL_ScaleModeNearest);
+        }
+        return g_fontTexture != nullptr;
     }
+
+#ifdef USE_OPENGL
+    if (g_fontGLTexture)
+        return true;
+
+    static uint32_t pixels[128 * 128];
+    buildFontPixels(pixels, 128);
+
+    glGenTextures(1, &g_fontGLTexture);
+    glBindTexture(GL_TEXTURE_2D, g_fontGLTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 128, 128, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    return g_fontGLTexture != 0;
+#else
+    return false;
+#endif
 }
 
 // base text scale: glyph pixels per font pixel
@@ -575,24 +651,38 @@ float textWidth(char const *s, float scale)
 // align: 0 = left, 1 = center, 2 = right; y is the vertical center
 void drawText(char const *s, float x, float y, float scale, SDL_Color c, int align = 1)
 {
-    ensureFont();
-    if (!g_fontTexture || !s)
+    if (!s || !*s || !ensureFont())
         return;
 
     float const w = textWidth(s, scale);
     float px = align == 1 ? x - w * 0.5f : (align == 2 ? x - w : x);
-    float const py = y - 4.f * scale;
+    float const py = y - 4.f * scale, gs = 8.f * scale;
 
-    SDL_SetTextureColorMod(g_fontTexture, c.r, c.g, c.b);
-    SDL_SetTextureAlphaMod(g_fontTexture, c.a);
+    constexpr int kMaxChars = 96;
+    SDL_Vertex v[kMaxChars * 4];
+    int idx[kMaxChars * 6];
+    int n = 0;
 
-    for (; *s; s++, px += 8.f * scale)
+    for (; *s && n < kMaxChars; s++, px += gs, n++)
     {
         uint8_t const ch = (uint8_t)*s;
-        SDL_Rect const src = { (ch & 15) * 8, (ch >> 4) * 8, 8, 8 };
-        SDL_FRect const dst = { px, py, 8.f * scale, 8.f * scale };
-        SDL_RenderCopyF(g_renderer, g_fontTexture, &src, &dst);
+        float const u0 = (ch & 15) / 16.f, v0 = (ch >> 4) / 16.f, u1 = u0 + 1.f / 16.f, v1 = v0 + 1.f / 16.f;
+
+        v[n * 4 + 0] = { { px, py }, c, { u0, v0 } };
+        v[n * 4 + 1] = { { px + gs, py }, c, { u1, v0 } };
+        v[n * 4 + 2] = { { px + gs, py + gs }, c, { u1, v1 } };
+        v[n * 4 + 3] = { { px, py + gs }, c, { u0, v1 } };
+
+        int const b = n * 4;
+        idx[n * 6 + 0] = b;
+        idx[n * 6 + 1] = b + 1;
+        idx[n * 6 + 2] = b + 2;
+        idx[n * 6 + 3] = b;
+        idx[n * 6 + 4] = b + 2;
+        idx[n * 6 + 5] = b + 3;
     }
+
+    submitGeometry(true, v, n * 4, idx, n * 6);
 }
 
 // Fits a label inside a circle of the given radius.
@@ -1643,20 +1733,13 @@ void touch_getInput(TouchInput *pInput)
     g_lookDX = g_lookDY = 0.f;
 }
 
-void touch_render(SDL_Renderer *renderer, SDL_Rect const *gameRect)
+namespace
+{
+
+// per-frame bookkeeping shared by both backends
+void beginFrame(void)
 {
     initialize();
-
-    if (renderer != g_renderer)
-    {
-        if (g_fontTexture)
-            SDL_DestroyTexture(g_fontTexture);
-        g_fontTexture = nullptr;
-        g_renderer = renderer;
-    }
-
-    SDL_GetRendererOutputSize(renderer, &g_outW, &g_outH);
-    g_gameRect = *gameRect;
     g_frame++;
 
     syncMode();
@@ -1682,9 +1765,10 @@ void touch_render(SDL_Renderer *renderer, SDL_Rect const *gameRect)
     else if (!typing && typingKeyboard && SDL_IsTextInputActive())
         SDL_StopTextInput();
     typingKeyboard = typing;
+}
 
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
+void renderOverlay(void)
+{
     switch (g_mode)
     {
         case TM_GAME:     renderGame(); break;
@@ -1692,6 +1776,179 @@ void touch_render(SDL_Renderer *renderer, SDL_Rect const *gameRect)
         case TM_SETTINGS: renderSettings(); break;
         case TM_EDIT:     renderEdit(); break;
     }
+}
+
+} // namespace
+
+void touch_render(SDL_Renderer *renderer, SDL_Rect const *gameRect)
+{
+    if (renderer != g_renderer)
+    {
+        if (g_fontTexture)
+            SDL_DestroyTexture(g_fontTexture);
+        g_fontTexture = nullptr;
+        g_renderer = renderer;
+    }
+
+    g_backend = BACKEND_SDL;
+    SDL_GetRendererOutputSize(renderer, &g_outW, &g_outH);
+    g_gameRect = *gameRect;
+
+    beginFrame();
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    renderOverlay();
+}
+
+#ifdef USE_OPENGL
+namespace
+{
+
+// Everything touch_renderGL changes, so it can be put back exactly. Some engine code
+// (e.g. glsurface for the classic renderer) binds its program/buffers once and relies on
+// them staying bound across frames.
+struct SavedGLState
+{
+    GLint program, arrayBuffer, elementBuffer, activeTexture, texture0;
+    GLint viewport[4];
+    GLint blendSrc, blendDst, texEnvMode, matrixMode;
+    GLboolean depthMask, colorMask[4];
+    GLboolean enabled[7];
+    GLboolean texture2D[5];
+    GLfloat color[4], texCoord[4];
+};
+
+GLenum const kSavedCaps[7] = { GL_DEPTH_TEST, GL_CULL_FACE, GL_ALPHA_TEST, GL_FOG, GL_SCISSOR_TEST, GL_STENCIL_TEST, GL_BLEND };
+
+void saveGLState(SavedGLState &st)
+{
+    glGetIntegerv(GL_CURRENT_PROGRAM, &st.program);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &st.arrayBuffer);
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &st.elementBuffer);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &st.activeTexture);
+    glGetIntegerv(GL_VIEWPORT, st.viewport);
+    glGetIntegerv(GL_MATRIX_MODE, &st.matrixMode);
+    glGetIntegerv(GL_BLEND_SRC, &st.blendSrc);
+    glGetIntegerv(GL_BLEND_DST, &st.blendDst);
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &st.depthMask);
+    glGetBooleanv(GL_COLOR_WRITEMASK, st.colorMask);
+    glGetFloatv(GL_CURRENT_COLOR, st.color);
+    glGetFloatv(GL_CURRENT_TEXTURE_COORDS, st.texCoord);
+
+    for (int i = 0; i < 7; i++)
+        st.enabled[i] = glIsEnabled(kSavedCaps[i]);
+
+    for (int i = 4; i >= 0; i--)
+    {
+        glActiveTexture(GL_TEXTURE0 + i);
+        st.texture2D[i] = glIsEnabled(GL_TEXTURE_2D);
+    }
+
+    // unit 0 is active now
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &st.texture0);
+    glGetTexEnviv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, &st.texEnvMode);
+}
+
+void restoreGLState(SavedGLState const &st)
+{
+    for (int i = 4; i >= 0; i--)
+    {
+        glActiveTexture(GL_TEXTURE0 + i);
+        if (st.texture2D[i])
+            glEnable(GL_TEXTURE_2D);
+        else
+            glDisable(GL_TEXTURE_2D);
+    }
+
+    // unit 0 is active now
+    glBindTexture(GL_TEXTURE_2D, st.texture0);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, st.texEnvMode);
+    glActiveTexture(st.activeTexture);
+
+    for (int i = 0; i < 7; i++)
+    {
+        if (st.enabled[i])
+            glEnable(kSavedCaps[i]);
+        else
+            glDisable(kSavedCaps[i]);
+    }
+
+    glBlendFunc(st.blendSrc, st.blendDst);
+    glDepthMask(st.depthMask);
+    glColorMask(st.colorMask[0], st.colorMask[1], st.colorMask[2], st.colorMask[3]);
+    glViewport(st.viewport[0], st.viewport[1], st.viewport[2], st.viewport[3]);
+    glColor4fv(st.color);
+    glTexCoord4fv(st.texCoord);
+    glBindBuffer(GL_ARRAY_BUFFER, st.arrayBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, st.elementBuffer);
+    glMatrixMode(st.matrixMode);
+    glUseProgram(st.program);
+}
+
+} // namespace
+#endif
+
+void touch_renderGL(int outw, int outh)
+{
+#ifdef USE_OPENGL
+    g_backend = BACKEND_GL;
+    g_outW = outw;
+    g_outH = outh;
+    g_gameRect = { 0, 0, outw, outh };
+
+    beginFrame();
+
+    SavedGLState saved;
+    saveGLState(saved);
+
+    // plain fixed-function 2D on top of the frame
+    glUseProgram(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    for (int i = 4; i >= 1; i--) // the renderers use units 0-4; only 0 is used here
+    {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glDisable(GL_TEXTURE_2D);
+    }
+
+    glActiveTexture(GL_TEXTURE0);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glViewport(0, 0, outw, outh);
+
+    for (GLenum const cap : kSavedCaps)
+        glDisable(cap);
+
+    glDepthMask(GL_FALSE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glMatrixMode(GL_TEXTURE);
+    glPushMatrix();
+    glLoadIdentity();
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, outw, outh, 0, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    renderOverlay();
+
+    glMatrixMode(GL_TEXTURE);
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+
+    restoreGLState(saved);
+#else
+    UNREFERENCED_PARAMETER(outw);
+    UNREFERENCED_PARAMETER(outh);
+#endif
 }
 
 #endif // EDUKE32_IOS

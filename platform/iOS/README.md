@@ -62,7 +62,10 @@ Uses NotBlood's normal **Multiplayer → Host / Join** menu (ENet over UDP, port
 
 ## Video
 
-The game renders with NotBlood's classic 8-bit software renderer at the iPad's native resolution, and Metal presents the frame. **Options → Video** offers 100/75/50/37.5/25% of native resolution if you want more speed or battery life. OpenGL/Polymost isn't available (iOS has no desktop OpenGL).
+* **Polymost (default):** NotBlood's OpenGL renderer gives the true 3D look when you aim up or down, the same as on PC. It runs on the iPad's GPU through [gl4es](https://github.com/ptitSeb/gl4es), which translates desktop OpenGL 2.1 into the OpenGL ES 2.0 that iPadOS provides.
+* **Classic:** the original 8-bit software renderer. It has DOS-style y-shearing when you look up or down, and it's heavier on the CPU. Switch between the two under **Options → Video → Renderer**.
+* Rendering is capped at the display refresh rate, and the game sleeps between frames instead of busy-waiting, which keeps the iPad cooler.
+* If the OpenGL renderer ever crashes during startup, the next launch falls back to the software renderer and creates `DISABLE_OPENGL.txt` in the NotBlood folder. Delete that file to try OpenGL again.
 
 ## Building yourself
 
@@ -71,7 +74,7 @@ On a Mac with Xcode, CMake and an SDL 2.32 source tree:
 ```sh
 cmake -S platform/iOS -B build-ios -G Xcode \
   -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-  -DSDL2_SOURCE_DIR=/path/to/SDL2-2.32.10
+  -DSDL2_SOURCE_DIR=/path/to/SDL2-2.32.10 -DGL4ES_SOURCE_DIR=/path/to/gl4es
 cmake --build build-ios --config Release --target NotBlood -- -sdk iphoneos CODE_SIGNING_ALLOWED=NO
 ```
 
@@ -81,5 +84,6 @@ You can also open `build-ios/NotBlood.xcodeproj`, set a signing team and run it 
 
 * `source/build/src/iosbits.mm`: entry point, Documents/Files folder, bundle paths, screen size, game-data check
 * `source/blood/src/touchcontrols.cpp`: touch overlay, weapon picker, settings screen and layout editor
-* `source/build/src/sdlayer.cpp`: iOS video path (SDL_Renderer/Metal), mouse/trackpad, app lifecycle (`EDUKE32_IOS`)
+* `source/build/src/sdlayer.cpp`: iOS video paths (OpenGL ES + gl4es; SDL_Renderer/Metal fallback), mouse/trackpad, app lifecycle (`EDUKE32_IOS`)
+* `platform/iOS/gl4es/`: small shims to build gl4es with Apple's toolchain
 * `platform/iOS/`: CMake project, Info.plist, app icon

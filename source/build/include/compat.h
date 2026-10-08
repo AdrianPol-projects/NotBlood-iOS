@@ -1538,6 +1538,10 @@ static inline void maybe_grow_buffer(char ** const buffer, int32_t * const buffe
 
 #if defined __ANDROID__ || defined EDUKE32_IOS
 # define EDUKE32_TOUCH_DEVICES
+#endif
+
+// iOS renders through gl4es, which exposes desktop OpenGL 2.1 on top of OpenGL ES 2.0
+#if defined __ANDROID__
 # define EDUKE32_GLES
 #endif
 

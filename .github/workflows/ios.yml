@@ -17,6 +17,7 @@ concurrency:
 
 env:
   SDL2_VERSION: 2.32.10
+  GL4ES_COMMIT: ec16bedd8819c475326f4f1a3063772c6d986e06
 
 jobs:
   build-ios:
@@ -36,12 +37,19 @@ jobs:
           mkdir -p third_party
           tar xzf sdl2.tar.gz -C third_party
 
+      - name: Fetch gl4es
+        run: |
+          curl -fsSL -o gl4es.tar.gz "https://github.com/ptitSeb/gl4es/archive/${GL4ES_COMMIT}.tar.gz"
+          mkdir -p third_party
+          tar xzf gl4es.tar.gz -C third_party
+
       - name: Configure
         run: |
           cmake -S platform/iOS -B build-ios -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             -DSDL2_SOURCE_DIR="$PWD/third_party/SDL2-${SDL2_VERSION}" \
+            -DGL4ES_SOURCE_DIR="$PWD/third_party/gl4es-${GL4ES_COMMIT}" \
             -DNOTBLOOD_BUILD=${{ github.run_number }}
 
       - name: Build

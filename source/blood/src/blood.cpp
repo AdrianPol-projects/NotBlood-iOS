@@ -1979,7 +1979,7 @@ int app_main(int argc, char const * const * argv)
 #endif
 #endif
 
-#ifdef __APPLE__
+#if defined __APPLE__ && !defined EDUKE32_IOS // iOS: keep the log next to the game files (visible in Files)
     if (!g_useCwd)
     {
         char cwd[BMAX_PATH];

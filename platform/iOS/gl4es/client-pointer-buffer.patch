@@ -1,0 +1,15 @@
+gl4es: glVertexPointer & co. store an absolute pointer (buffer data + offset) but leave the
+attrib's old buffer link from an earlier glVertexAttribPointer in place, so with LIBGL_USEVBO=0
+the draw code adds that buffer's address a second time and reads garbage. Clear the link.
+
+--- a/src/gl/gl4es.c
++++ b/src/gl/gl4es.c
+@@ -63,7 +63,7 @@
+ #define clone_gl_pointer(t, s, n)\
+     t.size = s; t.type = type; t.stride = stride; t.pointer = (void*)((char*)pointer + (uintptr_t)((glstate->vao->vertex)?glstate->vao->vertex->data:0));\
+     t.real_buffer=(glstate->vao->vertex)?glstate->vao->vertex->real_buffer:0; t.real_pointer=(glstate->vao->vertex)?pointer:0;   \
+-    t.normalized=n; t.divisor=0
++    t.normalized=n; t.divisor=0; t.buffer=NULL
+ #define break_lockarrays(t)\
+     if(glstate->vao->vertexattrib[t].real_buffer && glstate->vao->locked_mapped[t]) {    \
+         glstate->vao->vertexattrib[t].real_buffer = 0; \

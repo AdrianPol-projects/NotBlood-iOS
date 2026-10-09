@@ -55,6 +55,7 @@ void touch_render(SDL_Renderer *renderer, SDL_Rect const *gameRect); // draw ove
 void touch_renderGL(int outw, int outh);                         // same, on the GL path (before swap)
 void touch_updateGameFunctions(int32_t *flags, int32_t numFlags); // OR in on-screen button states
 void touch_notifyHardwareInput(void);                            // keyboard/mouse activity seen
+void touch_releaseAll(void);                                     // drop all fingers (app was suspended)
 #endif
 
 #endif // EDUKE32_IOS

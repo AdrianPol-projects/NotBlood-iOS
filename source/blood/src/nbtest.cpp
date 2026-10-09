@@ -93,8 +93,41 @@ static void fakeGetIntegerv(unsigned pname, int *data)
     }
 }
 
+// per-frame counts of the GLES calls gl4es makes, to see what the real driver has to do
+#define NBTEST_COUNTED(X) X(glBufferSubData) X(glBufferData) X(glTexImage2D) X(glTexSubImage2D) X(glDrawArrays) \
+    X(glDrawElements) X(glUseProgram) X(glBindTexture) X(glGetError) X(glFlush) X(glFinish) X(glReadPixels) \
+    X(glCompileShader) X(glLinkProgram) X(glGenerateMipmap) X(glBindFramebuffer) X(glVertexAttribPointer)
+
+#define NBTEST_DECL(f) static void *s_real_##f; static int s_cnt_##f;
+NBTEST_COUNTED(NBTEST_DECL)
+
+#if defined __x86_64__
+// forward any arguments untouched: count, then tail-jump to the real function
+#define NBTEST_WRAP(f) extern "C" void nbtest_wrap_##f(void); \
+    extern "C" void *nbtest_real_##f(void) { s_cnt_##f++; return s_real_##f; } \
+    __asm__(".text\n.globl nbtest_wrap_" #f "\nnbtest_wrap_" #f ":\n" \
+            "push %rdi\npush %rsi\npush %rdx\npush %rcx\npush %r8\npush %r9\nsub $8,%rsp\n" \
+            "call nbtest_real_" #f "\nadd $8,%rsp\npop %r9\npop %r8\npop %rcx\npop %rdx\npop %rsi\npop %rdi\n" \
+            "jmp *%rax\n");
+NBTEST_COUNTED(NBTEST_WRAP)
+#endif
+
+static void nbtest_logcounts(int frames)
+{
+    char buf[1024];
+    int len = 0;
+#define NBTEST_LOG(f) if (s_cnt_##f) len += Bsnprintf(buf + len, sizeof(buf) - len, " %s=%d", #f + 2, s_cnt_##f / frames); s_cnt_##f = 0;
+    NBTEST_COUNTED(NBTEST_LOG)
+    LOG_F(INFO, "nbtest: GLES calls per frame:%s", buf);
+}
+
 static void *glesProcAddress(char const *name)
 {
+#if defined __x86_64__
+#define NBTEST_HOOK(f) if (!strcmp(name, #f)) { s_real_##f = SDL_GL_GetProcAddress(name); return (void *)nbtest_wrap_##f; }
+    NBTEST_COUNTED(NBTEST_HOOK)
+#endif
+
     if (!strcmp(name, "glGetString"))
     {
         s_realGetString = (glGetString_t)SDL_GL_GetProcAddress(name);
@@ -120,6 +153,7 @@ int nbtest_initgl4es(SDL_Window *window)
     static bool initialized;
     if (!initialized)
     {
+        setenv("LIBGL_USEVBO", "0", 1); // same as iosbits.mm
         set_getprocaddress(glesProcAddress);
         set_getmainfbsize(mainFBSize);
         initialize_gl4es();
@@ -255,6 +289,22 @@ void nbtest_frame(void)
 // called right before the GL swap: grab the back buffer if a screenshot is pending
 void nbtest_beforeswap(int w, int h)
 {
+    {
+        static uint64_t t0;
+        static int frames;
+        uint64_t const now = timerGetNanoTicks();
+        if (!t0)
+            t0 = now;
+        if (++frames == 120)
+        {
+            double const ms = (double)(now - t0) / timerGetNanoTickRate() * 1000.0 / frames;
+            LOG_F(INFO, "nbtest: %.2f ms/frame (%.1f fps) at %dx%d", ms, 1000.0 / ms, w, h);
+            nbtest_logcounts(frames);
+            t0 = now;
+            frames = 0;
+        }
+    }
+
     if (s_pendingShot.empty())
         return;
 

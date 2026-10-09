@@ -2981,6 +2981,7 @@ int32_t handleevents_pollsdl(void)
                 appactive = 1;
                 if (g_mouseGrabbed)
                     grabmouse_low(1);
+                touch_releaseAll(); // finger releases that happened while suspended never arrive
                 timerUpdateClock();
                 continue;
             case SDL_APP_WILLENTERFOREGROUND:

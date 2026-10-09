@@ -844,9 +844,11 @@ void gameFingerDown(Finger &f)
         return;
     }
 
-    for (auto const &o : g_fingers)
+    // one look finger at a time: the newest one takes over, so a finger whose release got lost
+    // (system gesture, app switch) can never leave turning dead
+    for (auto &o : g_fingers)
         if (o.active && &o != &f && o.role == FR_LOOK)
-            return; // one look finger at a time
+            o.role = FR_NONE;
 
     f.role = FR_LOOK;
 }
@@ -1654,6 +1656,16 @@ bool touch_handleEvent(SDL_Event const *ev)
     }
 
     return true;
+}
+
+void touch_releaseAll(void)
+{
+    if (!g_initialized)
+        return;
+
+    releaseGameInput();
+    for (auto &f : g_fingers)
+        f.active = false;
 }
 
 void touch_notifyHardwareInput(void)

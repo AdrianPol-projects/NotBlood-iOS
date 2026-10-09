@@ -142,7 +142,11 @@ int ios_initgl4es(SDL_Window *window)
     static bool initialized;
     if (!initialized)
     {
-        // no LIBGL_* environment tweaks needed; gl4es probes the current context for extensions
+        // Polymost streams every polygon through glBufferSubData into one shared VBO (~200 updates
+        // a frame). Apple's GLES driver stalls on each update of a buffer the GPU is still reading,
+        // which held the game at ~10 fps, so keep buffers on the CPU side and let gl4es hand the
+        // driver plain client arrays, which it streams without waiting.
+        setenv("LIBGL_USEVBO", "0", 1);
         set_getprocaddress(ios_glesGetProcAddress);
         set_getmainfbsize(ios_getMainFBSize);
         initialize_gl4es();

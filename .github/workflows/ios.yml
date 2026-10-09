@@ -42,6 +42,9 @@ jobs:
           curl -fsSL -o gl4es.tar.gz "https://github.com/ptitSeb/gl4es/archive/${GL4ES_COMMIT}.tar.gz"
           mkdir -p third_party
           tar xzf gl4es.tar.gz -C third_party
+          for p in platform/iOS/gl4es/*.patch; do
+            patch -d "third_party/gl4es-${GL4ES_COMMIT}" -p1 --forward < "$p"
+          done
 
       - name: Configure
         run: |

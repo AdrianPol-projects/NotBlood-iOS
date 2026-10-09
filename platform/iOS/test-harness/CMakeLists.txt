@@ -5,6 +5,7 @@
 # SDL's offscreen video driver, so rendering problems can be reproduced and screenshotted
 # without a device:
 #
+#   (apply platform/iOS/gl4es/*.patch to the gl4es tree first, as the iOS workflow does)
 #   cmake -S platform/iOS/test-harness -B build-harness -G Ninja \
 #         -DSDL2_DIR=<SDL2 install>/lib/cmake/SDL2 -DGL4ES_SOURCE_DIR=<gl4es>
 #   cmake --build build-harness

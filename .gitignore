@@ -125,3 +125,4 @@ project.xcworkspace/
 /build-ios/
 /third_party/
 *.ipa
+a.out

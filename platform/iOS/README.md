@@ -86,4 +86,5 @@ You can also open `build-ios/NotBlood.xcodeproj`, set a signing team and run it 
 * `source/blood/src/touchcontrols.cpp`: touch overlay, weapon picker, settings screen and layout editor
 * `source/build/src/sdlayer.cpp`: iOS video paths (OpenGL ES + gl4es; SDL_Renderer/Metal fallback), mouse/trackpad, app lifecycle (`EDUKE32_IOS`)
 * `platform/iOS/gl4es/`: small shims to build gl4es with Apple's toolchain
+* `platform/iOS/test-harness/` + `source/blood/src/nbtest.cpp`: Linux test build that renders exactly like the iOS GL path (gl4es on an OpenGL ES 2.0 context reporting the iPad's capabilities, SDL offscreen) and takes scripted screenshots, for debugging without a device
 * `platform/iOS/`: CMake project, Info.plist, app icon

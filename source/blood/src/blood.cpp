@@ -2388,6 +2388,10 @@ RESTART:
         }
         if (bDraw)
         {
+#ifdef NOTBLOOD_GL4ES_TEST
+            extern void nbtest_frame(void);
+            nbtest_frame();
+#endif
             if (gameHandleEvents() && quitevent)
             {
                 KB_KeyDown[sc_Escape] = 1;

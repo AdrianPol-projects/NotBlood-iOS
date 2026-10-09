@@ -44,7 +44,13 @@ int32_t r_polygonmode;     // 0:GL_FILL,1:GL_LINE,2:GL_POINT //FUK
 int32_t r_polymostDebug;
 int32_t r_shadeinterpolate = 1;
 int32_t r_skyzbufferhack;
+#ifdef EDUKE32_IOS
+// gl4es (GL on OpenGL ES 2.0) renders the indexed-color tilesheet path wrong (black or
+// garbage colors), so iOS always uses true-color textures
+int32_t r_useindexedcolortextures = 0;
+#else
 int32_t r_useindexedcolortextures = 1;
+#endif
 int32_t r_usenewshading = 4;
 int32_t r_usesamplerobjects = 1;
 int32_t r_usetileshades = 1;
@@ -495,6 +501,9 @@ static GLuint polymost2_compileShader(GLenum shaderType, const char* const sourc
 
 void polymost_glreset()
 {
+#ifdef EDUKE32_IOS
+    r_useindexedcolortextures = 0; // see declaration; also overrides a saved cvar
+#endif
     buildgl_resetStateAccounting();
     if (!nogl)
         buildgl_activeTexture(GL_TEXTURE0);
@@ -924,7 +933,7 @@ void polymost_initdrawpoly(void)
     drawpolyVertsOffset = 0;
     drawpolyVertsSubBufferIndex = 0;
 
-    if (glIsBuffer(drawpolyVertsID))
+    if (drawpolyVertsID && glIsBuffer(drawpolyVertsID))
         glDeleteBuffers(1, &drawpolyVertsID);
 
     glGenBuffers(1, &drawpolyVertsID);
@@ -1010,7 +1019,7 @@ void polymost_glinit()
     }
     for (int i = 0; i < numTilesheets; ++i)
     {
-        if (glIsTexture(tilesheetTexIDs[i])) continue;
+        if (tilesheetTexIDs[i] && glIsTexture(tilesheetTexIDs[i])) continue;
         glGenTextures(1, tilesheetTexIDs+i);
         buildgl_bindTexture(GL_TEXTURE_2D, tilesheetTexIDs[i]);
         uploadtextureindexed(true, {0, 0}, maxTexDimensions, (intptr_t) NULL);
@@ -1023,7 +1032,7 @@ void polymost_glinit()
     buildgl_bindTexture(GL_TEXTURE_2D, tilesheetTexIDs[blankTile.tilesheetID]);
     uploadtextureindexed(false, {(int32_t) blankTile.rect.u, (int32_t) blankTile.rect.v}, {2, 2}, (intptr_t) blankTex);
 
-    if (!glIsBuffer(quadVertsID))
+    if (!quadVertsID || !glIsBuffer(quadVertsID))
         glGenBuffers(1, &quadVertsID);
     buildgl_bindBuffer(GL_ARRAY_BUFFER, quadVertsID);
     const float quadVerts[] =
@@ -1127,7 +1136,7 @@ void polymost_glinit()
     GLuint polymost1ExtendedFragmentShaderID = 0;
     GLuint polymost1BasicFragmentShaderID = 0;
 
-    if (!glIsProgram(polymost1ExtendedShaderProgramID))
+    if (!polymost1ExtendedShaderProgramID || !glIsProgram(polymost1ExtendedShaderProgramID))
     {
         polymost1ExtendedShaderProgramID = glCreateProgram();
 
@@ -1143,7 +1152,7 @@ void polymost_glinit()
         glDetachShader(polymost1ExtendedShaderProgramID, polymost1ExtendedFragmentShaderID);
     }
 
-    if (!glIsProgram(polymost1BasicShaderProgramID))
+    if (!polymost1BasicShaderProgramID || !glIsProgram(polymost1BasicShaderProgramID))
     {
         int const polymost1BasicFragLen = Bstrlen(polymost1Frag);
         auto      polymost1BasicFrag    = (char *)Xmalloc(polymost1BasicFragLen);

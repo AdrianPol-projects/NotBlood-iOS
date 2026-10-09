@@ -71,7 +71,7 @@ bool glsurface_initialize(vec2_t bufferResolution)
 
     buffer = Xmalloc(bufferSize);
     
-    if (!glIsBuffer(quadVertsID))
+    if (!quadVertsID || !glIsBuffer(quadVertsID))
         glGenBuffers(1, &quadVertsID);
 
     buildgl_bindBuffer(GL_ARRAY_BUFFER, quadVertsID);
@@ -94,7 +94,7 @@ bool glsurface_initialize(vec2_t bufferResolution)
 
     buildgl_activeTexture(GL_TEXTURE0);
 
-    if (!glIsTexture(bufferTexID))
+    if (!bufferTexID || !glIsTexture(bufferTexID))
         glGenTextures(1, &bufferTexID);
 
     buildgl_bindTexture(GL_TEXTURE_2D, bufferTexID);
@@ -158,7 +158,7 @@ bool glsurface_initialize(vec2_t bufferResolution)
                           * color;\n\
          }\n";
 
-    if (!glIsProgram(shaderProgramID))
+    if (!shaderProgramID || !glIsProgram(shaderProgramID))
     {
         shaderProgramID = glCreateProgram();
 

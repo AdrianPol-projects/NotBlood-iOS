@@ -2136,6 +2136,32 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
                 videoGetModes();
             }
         }
+#elif defined NOTBLOOD_GL4ES_TEST
+        // desktop harness for the iOS GL path: gl4es on an OpenGL ES 2.0 context
+        (void)sdlayer_gl_attributes;
+        (void)i;
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
+        sdl_window = SDL_CreateWindow("", 0, 0, x, y, SDL_WINDOW_OPENGL | borderless);
+        if (sdl_window)
+            sdl_context = SDL_GL_CreateContext(sdl_window);
+
+        if (!sdl_window || !sdl_context)
+        {
+            LOG_F(ERROR, "Unable to set video mode: %s failed: %s.", sdl_window ? "SDL_GL_CreateContext" : "SDL_GL_CreateWindow",  SDL_GetError());
+            nogl = 1;
+        }
+        else
+        {
+            extern int nbtest_initgl4es(SDL_Window *);
+            extern void *nbtest_glGetProcAddress(const char *);
+            nbtest_initgl4es(sdl_window);
+            gladLoadGLLoader(nbtest_glGetProcAddress);
+        }
 #else
         SDL_GL_ATTRIBUTES(i, sdlayer_gl_attributes);
 
@@ -2461,6 +2487,14 @@ void videoShowFrame(int32_t w)
         }
 #endif
 
+#ifdef NOTBLOOD_GL4ES_TEST
+        {
+            extern void nbtest_beforeswap(int, int);
+            int outw, outh;
+            SDL_GL_GetDrawableSize(sdl_window, &outw, &outh);
+            nbtest_beforeswap(outw, outh);
+        }
+#endif
 #ifdef EDUKE32_IOS
         {
             int outw, outh;

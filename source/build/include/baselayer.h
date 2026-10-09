@@ -358,7 +358,7 @@ static inline uint64_t calcFrameDelay(int maxFPS)
     switch (maxFPS)
     {
         case -2: return 0;
-        case -1: maxFPS = refreshfreq; break;
+        case -1: maxFPS = refreshfreq > 0 ? refreshfreq : 60; break; // some displays report 0 Hz
         case 0: maxFPS = 1000; break;
     }
 

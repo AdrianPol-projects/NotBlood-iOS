@@ -3776,6 +3776,9 @@ void SetupVideoPolymostMenu(CGameMenuItemChain *pItem)
     itemOptionsDisplayPolymost3DModels.at20 = usemodels;
     itemOptionsDisplayPolymostDeliriumBlur.at20 = gDeliriumBlur;
     itemOptionsDisplayPolymostUseColorIndexedTex.at20 = r_useindexedcolortextures;
+#ifdef EDUKE32_IOS
+    itemOptionsDisplayPolymostUseColorIndexedTex.bEnable = false; // not supported through gl4es
+#endif
     itemOptionsDisplayPolymostShadeInterpolation.at20 = r_shadeinterpolate;
     itemOptionsDisplayPolymostShadeInterpolation.bEnable = !!r_useindexedcolortextures;
     itemOptionsDisplayPolymostYShearing.at20 = r_yshearing;

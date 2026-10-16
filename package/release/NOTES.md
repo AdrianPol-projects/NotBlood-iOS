@@ -71,7 +71,7 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 - Players get their saves by name. New players start with the pitchfork. When somebody leaves, the game saves itself.
 
 **Online and LAN**
-- Online lobbies through your own relay server ([server/](https://github.com/AdrianPol-projects/NotBlood-Chosen/tree/main/server)). They are protected by a key and need no port forwarding. There is no default server: enter your own server's address and key.
+- Online lobbies through your own relay server ([how to run it: SERVER.md](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/SERVER.md)). They are protected by a key and need no port forwarding. There is no default server: enter your own server's address and key.
 - A live dashboard in the browser: lobbies, players' health, armor, weapons and keys, a live level map and an event list.
 - FIND LAN GAMES. The host screen shows your address, and you get clear messages when versions or mods differ.
 
@@ -103,7 +103,7 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 
 **Teams:** GAME SETTINGS > GAME: TEAMS. Pick the MODE, then use SET TEAMS to choose who plays on which side.
 
-**Online:** MULTIPLAYER > ONLINE. Enter the server address and key, then HOST A LOBBY or FIND LOBBIES. Bots work the same way as on a LAN.
+**Online:** set up your own server once ([SERVER.md](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/SERVER.md): Docker on a Raspberry Pi, a home PC or a VPS). Then MULTIPLAYER > ONLINE: enter the server address and key, then HOST A LOBBY or FIND LOBBIES. Bots work the same way as on a LAN.
 
 ## Game modes
 

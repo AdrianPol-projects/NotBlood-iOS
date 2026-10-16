@@ -85,7 +85,7 @@ ONLINE
 
   MULTIPLAYER > ONLINE: the server address and its key (ask whoever runs the server - there
   is no default server), then HOST A LOBBY or FIND LOBBIES. Nobody needs to forward ports.
-  The server program is in the source code (server/), e.g. for a Raspberry Pi.
+  Running your own server (Docker, e.g. on a Raspberry Pi): see SERVER.md in the source code.
   Live stats of the games: open the server's address in a web browser.
 
 

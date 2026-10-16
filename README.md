@@ -12,7 +12,7 @@ Unzip, copy your Blood files (One Unit Whole Blood: CD, GOG or Steam) next to th
 * **Bots** that play like people (hide, ambush, flank, take the high ground, ride lifts), 4 difficulties, 6 personalities, fine tuning for all bots and for each one. Offline (PLAY WITH BOTS, CAREER, WATCH BOTS) and in LAN and online games, where the host's PC plays them. Details: [BOTS.md](package/release/BOTS.md).
 * **Match types**: gun game, king of the hill, juggernaut, last man standing; teams: team bloodbath, capture the flag, king of the hill, last team standing; co-op survival. **SET TEAMS** for any mix of players and bots, **mutators** (gravity, vampire, one-hit kills, weapon sets) and **match stats**.
 * **Co-op saves**, 8 slots, saved on every player's machine. Load *where you saved* (positions, keys, enemies) or *restart the level with your gear*. Players get their saves by name, new players start with the pitchfork, missing players leave the level. The game saves itself when a player leaves.
-* **Online lobbies** through your own relay server ([server/](server/README.md)): host or find lobbies, protected by a server key, no port forwarding.
+* **Online lobbies** through your own relay server ([how to set it up: SERVER.md](SERVER.md)): host or find lobbies, protected by a server key, no port forwarding.
 * **Live dashboard** in the browser: lobbies, players' health, armor, weapons, keys, a live level map, an event list, big-screen mode, and you choose what it shows.
 * **MODS menu**: add-on episodes (`addons/`, e.g. Cryptic Passage) and mods (`mods/` folders, `.zip`, `.grp`, `.pk3`). A mod that breaks the start is switched off again.
 * **FIND LAN GAMES**, your address on the host screen, clear messages when versions or mods differ.
@@ -20,7 +20,7 @@ Unzip, copy your Blood files (One Unit Whole Blood: CD, GOG or Steam) next to th
 * **Touch devices**: on-screen controls, gyro aiming, resolutions from 100 % down to 25 %, touch buttons hide while a controller is connected.
 * **macOS** app for Apple Silicon and Intel that needs no administrator; **Android** keeps everything in the `NotBlood` folder of the main storage.
 
-Building: `release.yml` (desktop and Android), `platform/Android`, `platform/iOS`; the relay server is in `server/`.
+Building: `release.yml` (desktop and Android), `platform/Android`, `platform/iOS`; the relay server is in `server/` ([SERVER.md](SERVER.md)).
 
 ---
 

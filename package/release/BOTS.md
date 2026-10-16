@@ -31,6 +31,38 @@ On every map they work out the good high places: how much you can see from there
 
 Console: `bot_match [frag limit] [time limit]` starts a match with the menu's settings; all settings are `bot_*` variables (type `bot_` and press TAB).
 
+### How the bots work
+
+**A bot is a player.** Every bot takes a normal player slot. The game treats it like a human: same health, weapons, pickups, frags and respawns. The only difference is where its controls come from. Each game tick the bot code fills in the same input a keyboard and mouse would give: move forward or back, strafe, turn, look up or down, jump, crouch, fire, alt-fire, use, switch weapon. So bots can't do anything a player can't, and they don't cheat on speed, damage or ammo.
+
+**What a bot knows.**
+- **Sight:** it sees only what's in its field of view and not behind walls (a line-of-sight check like the game's own).
+- **Hearing:** it hears shots, explosions, jumps and running nearby.
+- **Memory:** it remembers where it last saw or heard you and how hurt you looked from the hits it saw land.
+- **Reaction:** it needs a moment to react (shorter on harder difficulties).
+- **Aim:** its aim wobbles and settles while it follows you.
+
+**How a bot decides.** Several times a second a bot sizes up its situation:
+- its own health, armor and weapons
+- the enemies it knows about and what they carry
+- the score and the time left
+- whether it just got a kill or got hurt
+
+It then gives each option a score and picks the best one: fight, flee to health, get to high ground, flank round, ambush at a doorway, chase, collect weapons and items, or camp. The **personality** shifts these scores (a rusher likes fighting, a coward likes fleeing), and the **difficulty** sets how good its aim, reaction, hearing and tactics are. **FINE TUNING** multiplies each of these, for all bots and for each bot. In the match types the objective is part of the choice too: the flag, the hill, the juggernaut, the next wave.
+
+**How a bot moves.**
+- **Pathfinding:** when a level starts, the bots read its layout from the map itself: rooms (sectors), the openings between them, doors, lifts, switches, ledges and pits. They find a way to their goal with an A* search over the rooms.
+- **Obstacles:** they open doors from the side the button is on, ride lifts (and walk over to a lift's switch when that's what works it), and jump gaps and steps. They watch for ledges and pits.
+- **High ground:** they score every spot on the map for how much it overlooks and how close weapons are.
+- **Getting unstuck:** when a bot is stuck it tries another way, and when it's lost it looks around for an exit.
+- **Level exits:** they never press one.
+
+**In network games** the bots run only on the **host's** computer.
+- The host makes their input together with its own and sends it to everybody with all the other players' moves. Every machine then runs exactly the same game, so all players see the same bots.
+- Before the start, the host sends the bots' names, looks and teams.
+- Their taunts go to everybody as chat.
+- The other players need nothing extra, only the same version.
+
 ### Bots in LAN and online games (new in 1.2)
 
 Host the game as usual (HOST A GAME or an online lobby). In the MULTIPLAYER setup, right under GAME, **BOTS** opens the same bots menu: how many (0, the default, is none; people and bots together are 8 at most), difficulty, personality, SET EACH BOT, FINE TUNING and SET TEAMS. START GAME starts it with them.

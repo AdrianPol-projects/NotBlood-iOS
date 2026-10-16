@@ -89,7 +89,7 @@ jobs:
           if-no-files-found: ignore
 
       # only the ios branch publishes; test branches keep the IPA as a workflow artifact
-      - name: Publish to "ios-latest" release
+      - name: Publish to the release of this version (v<CHOSEN_VERSION>)
         if: github.ref_name == 'ios' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -101,11 +101,12 @@ jobs:
             exit 0
           fi
           VERSION=$(sed -n 's/#define CHOSEN_VERSION "\(.*\)"/\1/p' source/blood/src/chosen.h)
+          TAG="v$VERSION"
           TITLE="Blood for iPad and iPhone - NotBlood Chosen $VERSION (build ${{ github.run_number }})"
           # Replace the asset in place so the release is never left empty.
-          if gh release view ios-latest >/dev/null 2>&1; then
-            gh release upload ios-latest NotBlood.ipa --clobber
-            gh release edit ios-latest --title "$TITLE" --notes-file package/release/NOTES-iOS.md --prerelease=false --latest
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" NotBlood.ipa --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file package/release/NOTES-iOS.md --prerelease=false --latest
           else
-            gh release create ios-latest NotBlood.ipa --target "$GITHUB_SHA" --latest --title "$TITLE" --notes-file package/release/NOTES-iOS.md
+            gh release create "$TAG" NotBlood.ipa --target "$GITHUB_SHA" --latest --title "$TITLE" --notes-file package/release/NOTES-iOS.md
           fi

@@ -6,7 +6,7 @@ The iOS/iPadOS build of NotBlood Chosen, based on [NotBlood](https://github.com/
 
 Every push to the `ios` branch builds an **unsigned** IPA on a GitHub macOS runner:
 
-* **Releases → `ios-latest`** – always the newest build (open this on the iPad to download directly), or
+* **Releases → the latest release** (e.g. `v1.2`) – always the newest build (open this on the iPad to download directly), or
 * **Actions → iOS IPA → latest run → Artifacts**.
 
 Sign and install it with Signulous, Sideloadly, AltStore/SideStore or your own developer account. Unsigned IPAs are what these services expect.

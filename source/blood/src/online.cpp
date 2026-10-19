@@ -132,16 +132,18 @@ template<typename F> static bool onlineWait(const char *pzText, int nTimeoutMs, 
 
 static bool onlineConnect(void)
 {
+#ifndef NOTBLOOD_WEB // in a browser no address means the server the page came from
     if (!gOnlineServer[0])
     {
         setStatus("Enter the server address first");
         return false;
     }
+#endif
     if (relayStatus() == kRelayOnline)
         return true;
     relayConnect(gOnlineServer, gOnlineKey, onlineVersion());
     char buffer[128];
-    Bsnprintf(buffer, sizeof(buffer), "Connecting to %s", gOnlineServer);
+    Bsnprintf(buffer, sizeof(buffer), "Connecting to %s", gOnlineServer[0] ? gOnlineServer : "the server");
     if (!onlineWait(buffer, 15000, []() { return relayStatus() == kRelayOnline; }))
     {
         relayClose();

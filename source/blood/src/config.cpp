@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 //-------------------------------------------------------------------------
 
+#include "webbits.h"
 #include "baselayer.h"
 #include "common_game.h"
 #include "build.h"
@@ -1356,6 +1357,9 @@ void CONFIG_WriteSetup(uint32_t flags)
     OSD_Printf("Wrote %s\n",SetupFilename);
     CONFIG_WriteSettings();
     Bfflush(NULL);
+#ifdef NOTBLOOD_WEB
+    web_filesChanged();  // into the browser's storage
+#endif
 }
 
 #if 0

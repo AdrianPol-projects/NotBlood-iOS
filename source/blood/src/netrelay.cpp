@@ -200,6 +200,8 @@ std::string base64(const uint8_t *p, size_t n)
     return out;
 }
 
+#ifndef __EMSCRIPTEN__
+
 // ---- sockets -------------------------------------------------------------------------------
 
 void setNonBlocking(sock_t s)
@@ -1090,3 +1092,357 @@ void lanScanStop(void)
         sockClose(g_lan.scan);
     g_lan.scan = kBadSocket;
 }
+
+#else // __EMSCRIPTEN__
+
+// ---- web browsers -----------------------------------------------------------------------------
+//
+// No threads and no sockets in a page: the relay connection is the browser's own WebSocket, its
+// events arrive between frames, and the local "UDP" ends of the tunnel are in-memory sockets
+// (webnet.h) that ENet uses too. There are no LAN games in a browser.
+
+} // namespace
+
+#include <emscripten.h>
+#include <emscripten/websocket.h>
+#include "webnet.h"
+
+namespace {
+
+struct WebRelay
+{
+    EMSCRIPTEN_WEBSOCKET_T ws = 0;
+    int status = kRelayIdle;
+    bool bOpened = false, bAuthed = false;
+    std::string server, key, version, error;
+    std::deque<std::string> outText, inText;
+    std::map<int, int> peers;  // host: remote player id -> socket towards the ENet server
+    int client = -1;           // joining player: the socket the local ENet client talks to
+    uint16_t clientPeer = 0;   // ... and the ENet client's port
+    int hostGamePort = 23513;
+    unsigned traffic = 0;
+} g_web;
+
+EM_JS(char *, web_relayPageServer, (), {
+    return stringToNewUTF8(Module.notbloodServer || "");
+});
+
+EM_JS(int, web_relayPageIsHttps, (), {
+    return location.protocol === "https:" ? 1 : 0;
+});
+
+std::string webField(const std::string &s, int n)
+{
+    size_t a = 0;
+    while (n-- > 0)
+    {
+        a = s.find('\t', a);
+        if (a == std::string::npos)
+            return "";
+        a++;
+    }
+    size_t b = s.find('\t', a);
+    return s.substr(a, b == std::string::npos ? std::string::npos : b - a);
+}
+
+// "host", "host:port", "ws://...", "http(s)://..." or nothing (the server the page came from)
+std::string webServerUrl(const std::string &s)
+{
+    std::string u = s;
+    if (u.empty())
+    {
+        char *p = web_relayPageServer();
+        u = p;
+        free(p);
+        return u;
+    }
+    bool const bHttps = web_relayPageIsHttps();
+    if (u.compare(0, 7, "http://") == 0)
+        u = "ws://" + u.substr(7);
+    else if (u.compare(0, 8, "https://") == 0)
+        u = "wss://" + u.substr(8);
+    else if (u.find("://") == std::string::npos)
+        u = (bHttps ? "wss://" : "ws://") + u;
+    if (bHttps && u.compare(0, 5, "ws://") == 0)
+        u = "wss://" + u.substr(5);  // a secure page may only open secure connections
+    size_t const host = u.find("://") + 3;
+    if (u.find('/', host) == std::string::npos)
+        u += "/ws";
+    return u;
+}
+
+void webSendText(const std::string &t)
+{
+    if (g_web.ws)
+        emscripten_websocket_send_utf8_text(g_web.ws, t.c_str());
+}
+
+void webFinish(const char *pzError)
+{
+    if (pzError && g_web.error.empty())
+        g_web.error = pzError;
+    g_web.status = kRelayClosed;
+}
+
+// joining player: datagrams from the local ENet client go to the host
+void webClientHandler(int s, uint16_t from, void const *data, size_t size, void *)
+{
+    (void)s;
+    g_web.clientPeer = from;
+    if (g_web.ws && g_web.status == kRelayOnline)
+    {
+        emscripten_websocket_send_binary(g_web.ws, (void *)data, (uint32_t)size);
+        g_web.traffic++;
+    }
+}
+
+// host: datagrams from the ENet server to one remote player
+void webPeerHandler(int s, uint16_t from, void const *data, size_t size, void *user)
+{
+    (void)s;
+    (void)from;
+    if (!g_web.ws || g_web.status != kRelayOnline || size > 4095)
+        return;
+    uint8_t dgram[4096];
+    dgram[0] = (uint8_t)(intptr_t)user;
+    memcpy(dgram + 1, data, size);
+    emscripten_websocket_send_binary(g_web.ws, dgram, (uint32_t)size + 1);
+    g_web.traffic++;
+}
+
+void webCloseSockets(void)
+{
+    for (auto &p : g_web.peers)
+        vnet_close(p.second);
+    g_web.peers.clear();
+    if (g_web.client >= 0)
+        vnet_close(g_web.client);
+    g_web.client = -1;
+    g_web.clientPeer = 0;
+}
+
+EM_BOOL webOnOpen(int, const EmscriptenWebSocketOpenEvent *, void *)
+{
+    g_web.bOpened = true;
+    return EM_TRUE;
+}
+
+EM_BOOL webOnError(int, const EmscriptenWebSocketErrorEvent *, void *)
+{
+    webFinish(g_web.bOpened ? "Lost the connection to the server" : "Couldn't connect to the server");
+    return EM_TRUE;
+}
+
+EM_BOOL webOnClose(int, const EmscriptenWebSocketCloseEvent *e, void *)
+{
+    if (!g_web.bOpened)
+        webFinish("Couldn't connect to the server");
+    else if (!g_web.bAuthed)
+        webFinish("The server didn't answer");
+    else
+        webFinish("The server closed the connection");
+    (void)e;
+    return EM_TRUE;
+}
+
+EM_BOOL webOnMessage(int, const EmscriptenWebSocketMessageEvent *e, void *)
+{
+    if (!e->isText)
+    {
+        if (g_web.status != kRelayOnline || !e->numBytes)
+            return EM_TRUE;
+        g_web.traffic++;
+        if (g_web.client >= 0)
+        {
+            if (g_web.clientPeer)
+                vnet_sendto(g_web.client, g_web.clientPeer, e->data, e->numBytes);
+        }
+        else if (e->numBytes > 1)
+        {
+            auto it = g_web.peers.find(e->data[0]);
+            if (it != g_web.peers.end())
+                vnet_sendto(it->second, (uint16_t)g_web.hostGamePort, e->data + 1, e->numBytes - 1);
+        }
+        return EM_TRUE;
+    }
+
+    std::string msg((char const *)e->data, e->numBytes && !e->data[e->numBytes - 1] ? e->numBytes - 1 : e->numBytes);
+    std::string const cmd = webField(msg, 0);
+    if (!g_web.bAuthed)
+    {
+        if (cmd == "challenge")
+            webSendText("auth\t" + hmacSha256Hex(g_web.key, webField(msg, 1)) + "\t1\t" + g_web.version);
+        else if (cmd == "ok")
+        {
+            g_web.bAuthed = true;
+            g_web.status = kRelayOnline;
+            while (!g_web.outText.empty())
+            {
+                webSendText(g_web.outText.front());
+                g_web.outText.pop_front();
+            }
+        }
+        else
+        {
+            webFinish(cmd == "error" ? webField(msg, 1).c_str() : "The server refused the connection");
+            if (g_web.ws)
+                emscripten_websocket_close(g_web.ws, 1000, "");
+        }
+        return EM_TRUE;
+    }
+
+    if (cmd == "peer_join")
+    {
+        int const id = atoi(webField(msg, 1).c_str());
+        if (!g_web.peers.count(id))
+        {
+            int const s = vnet_socket();
+            if (s >= 0 && vnet_bind(s, 0) == 0)
+            {
+                vnet_sethandler(s, webPeerHandler, (void *)(intptr_t)id);
+                g_web.peers[id] = s;
+            }
+            else if (s >= 0)
+                vnet_close(s);
+        }
+    }
+    else if (cmd == "peer_leave")
+    {
+        auto it = g_web.peers.find(atoi(webField(msg, 1).c_str()));
+        if (it != g_web.peers.end())
+        {
+            vnet_close(it->second);
+            g_web.peers.erase(it);
+        }
+    }
+    else if (cmd == "joined" && g_web.client < 0)
+    {
+        int const s = vnet_socket();
+        if (s >= 0 && vnet_bind(s, 0) == 0)
+        {
+            vnet_sethandler(s, webClientHandler, nullptr);
+            g_web.client = s;
+        }
+        else if (s >= 0)
+            vnet_close(s);
+    }
+    if (g_web.inText.size() < 256)
+        g_web.inText.push_back(msg);
+    return EM_TRUE;
+}
+
+} // namespace
+
+void relayConnect(const char *pzServer, const char *pzKey, const char *pzGameVersion)
+{
+    relayClose();
+    g_web.server = webServerUrl(pzServer);
+    g_web.key = pzKey;
+    g_web.version = pzGameVersion;
+    g_web.error.clear();
+    g_web.outText.clear();
+    g_web.inText.clear();
+    g_web.traffic = 0;
+    g_web.bOpened = g_web.bAuthed = false;
+    g_web.status = kRelayConnecting;
+
+    if (g_web.server.empty() || !emscripten_websocket_is_supported())
+    {
+        webFinish("Enter the server address first");
+        return;
+    }
+    EmscriptenWebSocketCreateAttributes attr;
+    emscripten_websocket_init_create_attributes(&attr);
+    attr.url = g_web.server.c_str();
+    attr.protocols = NULL;
+    attr.createOnMainThread = EM_TRUE;
+    g_web.ws = emscripten_websocket_new(&attr);
+    if (g_web.ws <= 0)
+    {
+        g_web.ws = 0;
+        webFinish("Couldn't connect to the server");
+        return;
+    }
+    emscripten_websocket_set_onopen_callback(g_web.ws, NULL, webOnOpen);
+    emscripten_websocket_set_onerror_callback(g_web.ws, NULL, webOnError);
+    emscripten_websocket_set_onclose_callback(g_web.ws, NULL, webOnClose);
+    emscripten_websocket_set_onmessage_callback(g_web.ws, NULL, webOnMessage);
+}
+
+void relayClose(void)
+{
+    if (g_web.ws)
+    {
+        emscripten_websocket_close(g_web.ws, 1000, "");
+        emscripten_websocket_delete(g_web.ws);
+        g_web.ws = 0;
+    }
+    webCloseSockets();
+    g_web.status = kRelayIdle;
+}
+
+int relayStatus(void)
+{
+    return g_web.status;
+}
+
+const char *relayError(void)
+{
+    return g_web.error.c_str();
+}
+
+void relaySendText(const char *pzText)
+{
+    if (g_web.status == kRelayOnline)
+        webSendText(pzText);
+    else if (g_web.outText.size() < 512)
+        g_web.outText.push_back(pzText);
+}
+
+bool relayReadText(char *pBuffer, int nSize)
+{
+    if (g_web.inText.empty() || nSize <= 0)
+        return false;
+    snprintf(pBuffer, nSize, "%s", g_web.inText.front().c_str());
+    g_web.inText.pop_front();
+    return true;
+}
+
+void relaySetHostGamePort(int nPort)
+{
+    g_web.hostGamePort = nPort;
+}
+
+int relayClientPort(void)
+{
+    return g_web.client >= 0 ? vnet_port(g_web.client) : 0;
+}
+
+unsigned relayTraffic(void)
+{
+    return g_web.traffic;
+}
+
+// ---- no LAN in a browser ----------------------------------------------------------------------
+
+bool netLocalAddress(char *pzAddress, int nSize)
+{
+    (void)pzAddress;
+    (void)nSize;
+    return false;
+}
+
+void lanAdvertiseStart(void) {}
+void lanAdvertiseUpdate(const char *, const char *, const char *, int, int, int) {}
+void lanAdvertisePoll(void) {}
+void lanAdvertiseStop(void) {}
+void lanScanStart(void) {}
+int lanScanPoll(LANGAME *pGames, int nMax)
+{
+    (void)pGames;
+    (void)nMax;
+    return 0;
+}
+void lanScanStop(void) {}
+
+#endif // __EMSCRIPTEN__

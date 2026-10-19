@@ -145,6 +145,10 @@
     #include <sys/time.h>
     #include <sys/socket.h>
     #include <poll.h>
+    #ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+    #include "webnet.h"
+    #endif
     #include <arpa/inet.h>
     #include <netinet/in.h>
     #include <netinet/tcp.h>
@@ -4897,7 +4901,7 @@ extern "C" {
         static uint64_t start_time_ns = 0;
 
         struct timespec ts;
-    #if defined(CLOCK_MONOTONIC_RAW)
+    #if defined(CLOCK_MONOTONIC_RAW) && !defined(__EMSCRIPTEN__)
         enet_gettime(CLOCK_MONOTONIC_RAW, &ts);
     #else
         enet_gettime(CLOCK_MONOTONIC, &ts);
@@ -5036,6 +5040,7 @@ extern "C" {
         return enet_address_get_host_ip(address, name, nameLength);
     } /* enet_address_get_host */
 
+    #ifndef __EMSCRIPTEN__
     int enet_socket_bind(ENetSocket socket, ENetAddress *address) {
         struct sockaddr_in6 sin;
         memset(&sin, 0, sizeof(struct sockaddr_in6));
@@ -5322,6 +5327,132 @@ extern "C" {
         return 0;
     } /* enet_socket_wait */
 
+
+    #else // __EMSCRIPTEN__: in-memory datagrams between ports of the page (webnet.h)
+
+    static void enet_web_loopback(ENetAddress *address, enet_uint16 port) {
+        memset(&address->host, 0, sizeof(address->host));
+        ((uint8_t *)&address->host)[10] = 0xff;
+        ((uint8_t *)&address->host)[11] = 0xff;
+        ((uint8_t *)&address->host)[12] = 127;
+        ((uint8_t *)&address->host)[15] = 1;
+        address->port = port;
+        address->sin6_scope_id = 0;
+    }
+
+    int enet_socket_bind(ENetSocket socket, ENetAddress *address) {
+        return vnet_bind(socket, address != NULL ? address->port : 0);
+    }
+
+    int enet_socket_get_address(ENetSocket socket, ENetAddress *address) {
+        enet_web_loopback(address, vnet_port(socket));
+        return 0;
+    }
+
+    int enet_socket_listen(ENetSocket socket, int backlog) {
+        (void)socket; (void)backlog;
+        return -1;
+    }
+
+    ENetSocket enet_socket_create(ENetSocketType type) {
+        return type == ENET_SOCKET_TYPE_DATAGRAM ? vnet_socket() : ENET_SOCKET_NULL;
+    }
+
+    int enet_socket_set_option(ENetSocket socket, ENetSocketOption option, int value) {
+        (void)socket; (void)option; (void)value;
+        return 0;
+    }
+
+    int enet_socket_get_option(ENetSocket socket, ENetSocketOption option, int *value) {
+        (void)socket; (void)option;
+        *value = 0;
+        return 0;
+    }
+
+    int enet_socket_connect(ENetSocket socket, ENetAddress *address) {
+        (void)socket; (void)address;
+        return -1;
+    }
+
+    ENetSocket enet_socket_accept(ENetSocket socket, ENetAddress *address) {
+        (void)socket; (void)address;
+        return ENET_SOCKET_NULL;
+    }
+
+    int enet_socket_shutdown(ENetSocket socket, ENetSocketShutdown how) {
+        (void)socket; (void)how;
+        return 0;
+    }
+
+    void enet_socket_destroy(ENetSocket socket) {
+        if (socket != ENET_SOCKET_NULL) {
+            vnet_close(socket);
+        }
+    }
+
+    int enet_socket_send(ENetSocket socket, ENetAddress *address, ENetBuffer *buffers, size_t bufferCount) {
+        enet_uint8 data[ENET_PROTOCOL_MAXIMUM_MTU];
+        size_t length = 0, i;
+        if (address == NULL) {
+            return -1;
+        }
+        for (i = 0; i < bufferCount; i++) {
+            if (length + buffers[i].dataLength > sizeof(data)) {
+                return -1;
+            }
+            memcpy(data + length, buffers[i].data, buffers[i].dataLength);
+            length += buffers[i].dataLength;
+        }
+        return vnet_sendto(socket, address->port, data, length);
+    }
+
+    int enet_socket_receive(ENetSocket socket, ENetAddress *address, ENetBuffer *buffers, size_t bufferCount) {
+        enet_uint8 data[ENET_PROTOCOL_MAXIMUM_MTU];
+        enet_uint16 from = 0;
+        size_t i, done = 0;
+        int length = vnet_recvfrom(socket, &from, data, sizeof(data));
+        if (length <= 0) {
+            return 0;
+        }
+        for (i = 0; i < bufferCount && done < (size_t)length; i++) {
+            size_t n = (size_t)length - done < buffers[i].dataLength ? (size_t)length - done : buffers[i].dataLength;
+            memcpy(buffers[i].data, data + done, n);
+            done += n;
+        }
+        if (done < (size_t)length) {
+            return -1;
+        }
+        if (address != NULL) {
+            enet_web_loopback(address, from);
+        }
+        return length;
+    }
+
+    int enet_socketset_select(ENetSocket maxSocket, ENetSocketSet *readSet, ENetSocketSet *writeSet, enet_uint32 timeout) {
+        (void)maxSocket; (void)readSet; (void)writeSet; (void)timeout;
+        return 0;
+    }
+
+    // waiting hands the page back to the browser (ASYNCIFY), which delivers the relay's messages
+    int enet_socket_wait(ENetSocket socket, enet_uint32 *condition, enet_uint64 timeout) {
+        enet_uint32 result = ENET_SOCKET_WAIT_NONE;
+        if ((*condition & ENET_SOCKET_WAIT_RECEIVE) && timeout > 0) {
+            double const end = emscripten_get_now() + (double)timeout;
+            while (vnet_pending(socket) <= 0 && emscripten_get_now() < end) {
+                emscripten_sleep(4);
+            }
+        }
+        if (*condition & ENET_SOCKET_WAIT_SEND) {
+            result |= ENET_SOCKET_WAIT_SEND;
+        }
+        if ((*condition & ENET_SOCKET_WAIT_RECEIVE) && vnet_pending(socket) > 0) {
+            result |= ENET_SOCKET_WAIT_RECEIVE;
+        }
+        *condition = result;
+        return 0;
+    }
+
+    #endif // __EMSCRIPTEN__
     #endif // !_WIN32
 
 

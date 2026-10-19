@@ -28,6 +28,7 @@ See the GNU General Public License for more details.
 #include "build.h"
 #include "baselayer.h"
 #include "iosbits.h"
+#include "webbits.h"
 #include "keyboard.h"
 #include "control.h"
 #include "function.h"
@@ -487,6 +488,11 @@ void initialize(void)
     resetButtons();
     loadConfig();
     g_initialized = true;
+#ifdef NOTBLOOD_WEB
+    // a computer without a touch screen: hidden until the screen is touched
+    if (!web_hastouch())
+        g_hiddenByHardware = true;
+#endif
 }
 
 //

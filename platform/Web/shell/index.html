@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>NotBlood Chosen</title>
+<meta name="description" content="Blood in your browser: NotBlood Chosen __VERSION__ with bots, match types and online play. Bring your own Blood files.">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NotBlood">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+<main id="launcher">
+  <header>
+    <h1>NotBlood <span>Chosen</span></h1>
+    <p class="sub">Blood in your browser &middot; version __VERSION__</p>
+  </header>
+
+  <section id="loading" class="card">
+    <p id="loadText">Loading the game&hellip;</p>
+    <progress id="loadBar" max="100" value="0"></progress>
+  </section>
+
+  <section id="ready" class="card" hidden>
+    <button id="play" class="big">Play</button>
+    <p id="filesInfo" class="small"></p>
+  </section>
+
+  <section id="needFiles" class="card" hidden>
+    <h2>Your Blood files</h2>
+    <p>The game files are not included. Pick them from your own copy of Blood
+      (<i>One Unit Whole Blood</i> from GOG or Steam, <i>Fresh Supply</i> or the CD). They stay on this
+      device, inside this web app &mdash; nothing is uploaded.</p>
+    <p class="small">Needed: <code>BLOOD.RFF</code>, <code>GUI.RFF</code>, <code>SOUNDS.RFF</code>,
+      <code>SURFACE.DAT</code>, <code>TABLES.DAT</code>, <code>VOXEL.DAT</code>, <code>BLOOD.INI</code>,
+      <code>TILES000.ART</code>&ndash;<code>TILES017.ART</code>. Optional: the <code>movie</code> folder,
+      <code>blood02.ogg</code>&hellip; (CD music), add-ons and mods.</p>
+  </section>
+
+  <section id="filesCard" class="card">
+    <div class="row">
+      <label class="button">Choose files<input id="pickFiles" type="file" multiple hidden></label>
+      <label class="button" id="pickFolderLabel">Choose a folder<input id="pickFolder" type="file" webkitdirectory multiple hidden></label>
+    </div>
+    <p class="small">Select all files of your Blood folder at once, or a <code>.zip</code> of it.
+      On iPad: in the Files app, open the Blood folder, tap <b>Select</b>, <b>Select All</b>, then <b>Open</b>.</p>
+    <p id="importText" class="small status"></p>
+    <details>
+      <summary>Settings, saves and files</summary>
+      <div class="row">
+        <button id="backup">Download settings &amp; saves</button>
+        <button id="removeAll" class="danger">Remove everything</button>
+      </div>
+      <p class="small">Restore a backup by choosing its <code>.zip</code> with &ldquo;Choose files&rdquo;.
+        Your saves stay in this browser on this device.</p>
+    </details>
+  </section>
+
+  <section id="install" class="card" hidden>
+    <h2>Install it</h2>
+    <p id="installText"></p>
+    <button id="installButton" hidden>Install</button>
+  </section>
+
+  <section class="card small">
+    <p><b>Online play:</b> MULTIPLAYER &gt; ONLINE. Leave SERVER empty to use the server this page comes
+      from and enter its key. LAN games aren't possible in a browser.</p>
+    <p><b>Controls:</b> keyboard and mouse (click the game to capture the mouse), a game controller, or the
+      touch controls on tablets and phones.</p>
+    <p>NotBlood Chosen is free software (GPL 2), based on <a href="https://github.com/clipmove/NotBlood">NotBlood</a>.
+      Source and other platforms: <a href="https://github.com/AdrianPol-projects/NotBlood-Chosen">NotBlood-Chosen</a>.
+      Blood &copy; Monolith Productions; no game data is provided here.</p>
+  </section>
+</main>
+
+<script src="app.js"></script>
+<script src="notblood.js" async onload="notbloodLoaded()"></script>
+</body>
+</html>

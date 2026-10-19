@@ -128,3 +128,7 @@ project.xcworkspace/
 a.out
 /notblood
 /notblood.exe
+
+# web build
+/build-web/
+__pycache__/

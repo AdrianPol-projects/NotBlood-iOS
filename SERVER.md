@@ -1,6 +1,6 @@
 # Running your own NotBlood Chosen server
 
-NotBlood Chosen can play over the internet **without port forwarding** on the players' side. For that you run a small server, the **relay**, on any machine that's always on and reachable: a Raspberry Pi, a home server, a NAS with Docker, or a cheap VPS. The same server also hosts a **live dashboard** that shows the running games in a web browser.
+NotBlood Chosen can play over the internet **without port forwarding** on the players' side. For that you run a small server, the **relay**, on any machine that's always on and reachable: a Raspberry Pi, a home server, a NAS with Docker, or a cheap VPS. The same server also hosts a **live dashboard** that shows the running games in a web browser, and **the game itself for web browsers** at `/play/`.
 
 There is no public default server. Everybody who plays enters your server's address and key in the game.
 
@@ -32,6 +32,24 @@ There is no public default server. Everybody who plays enters your server's addr
 - **LAN games on the dashboard:** a LAN game can show up on the dashboard too. In MULTIPLAYER > ONLINE, turn on SHOW MY LAN GAMES ON THE DASHBOARD on the host's machine.
 
 The relay is one Python file (`server/relay.py`, using aiohttp) and the dashboard is three static files (`server/static/`). It needs very little memory and CPU: a Raspberry Pi 3 or 4 is plenty.
+
+## The web version at /play/
+
+The relay also serves NotBlood Chosen for web browsers: open `http://<server>/play/` on an iPad, a phone or any computer.
+
+- **Installing:** it installs like an app (iPad: Share → Add to Home Screen) and then works offline.
+- **Game files:** players pick their own Blood files once, and the files stay in their browser.
+- **Online play:** works like in the other versions, through this server and with its key, and plays together with PC, Mac, Android and iPad players.
+- **LAN games:** not possible in a browser.
+
+The relay downloads the web build by itself:
+
+- **When:** when it starts and every 6 hours.
+- **What:** the `-web.zip` of the newest release of NotBlood-Chosen on GitHub. Nothing to do when a new version comes out.
+- **Where:** it's kept in the data volume, next to the history.
+- **Without it:** the page is the only part that needs no key. To turn it off, set `WEB_UPDATE_HOURS=0` and delete `web/` from the volume.
+
+Pages and installing as an app need **https**. A Cloudflare tunnel or Caddy with a real domain gives you that; plain `http://` on a home network works for playing in a tab. See [platform/Web/README.md](platform/Web/README.md) for how the port works.
 
 ## What you need
 
@@ -127,7 +145,7 @@ server {
 }
 ```
 
-**Option C: Cloudflare Tunnel, no open ports at all.** This is how the author's Raspberry Pi runs it.
+**Option C: Cloudflare Tunnel, no open ports at all.**
 1. Install `cloudflared` and create a tunnel: `cloudflared tunnel create blood`.
 2. Add an ingress rule (`hostname: blood.example.com`, `service: http://127.0.0.1:8099`) and route the DNS name: `cloudflared tunnel route dns blood blood.example.com`.
 3. In the Cloudflare dashboard, leave **Always Use HTTPS** off for that hostname, because the game uses plain `ws://`.
@@ -142,7 +160,10 @@ In `server.env`:
 | `BLOOD_KEY` | (none, required) | the server key for games and the dashboard |
 | `TRUST_PROXY` | `0` | `1`: use `CF-Connecting-IP` (Cloudflare only) |
 | `PORT` | `8080` | the port inside the container (or of `relay.py`) |
-| `DATA_DIR` | `/data` | where the game history is kept |
+| `DATA_DIR` | `/data` | where the game history (and the web version) is kept |
+| `WEB_UPDATE_HOURS` | `6` | how often to look for a new web version; `0`: never download it |
+| `WEB_REPO` | `AdrianPol-projects/NotBlood-Chosen` | the GitHub repository whose newest release has the web version |
+| `WEB_DIR` | `$DATA_DIR/web` | where the web version is kept |
 
 Built-in limits: 200 connections, 24 per address, 50 lobbies. A player who doesn't answer for 45 seconds is dropped.
 

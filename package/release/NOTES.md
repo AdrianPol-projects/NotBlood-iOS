@@ -13,6 +13,9 @@ You need your own Blood files (One Unit Whole Blood: CD, GOG or Steam). The game
 | `NotBlood-Chosen-1.2-macos.zip` | macOS 11 or newer, Apple Silicon and Intel |
 | `NotBlood-Chosen-1.2-android.apk` | Android 5 or newer (phones, tablets, Chromebooks) |
 | `NotBlood-Chosen-1.2-ios.ipa` | iPad/iPhone with iOS 15 or newer (unsigned: sideload it with Signulous, Sideloadly or AltStore) |
+| `NotBlood-Chosen-1.2-web.zip` | the web version; every NotBlood server installs it by itself and serves it at `/play/` ([SERVER.md](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/SERVER.md)) |
+
+**No install at all:** if you or a friend runs a NotBlood server, open its address followed by `/play/` in Safari, Chrome, Edge or Firefox. Pick your Blood files once, add it to the home screen and it works offline, with everything below except LAN games ([more](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/platform/Web/README.md)).
 
 The iPad/iPhone IPA is the same build that's in [NotBlood-iOS](https://github.com/AdrianPol-projects/NotBlood-iOS/releases/latest), which has iOS install notes.
 

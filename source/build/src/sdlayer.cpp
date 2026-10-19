@@ -38,6 +38,10 @@
 # ifdef EDUKE32_IOS
 #  include "iosbits.h" // NotBlood's Android port runs the iPad code (androidbits.cpp)
 # endif
+#elif defined NOTBLOOD_WEB
+# include "iosbits.h" // the web port runs the iPad code too (webbits.cpp)
+# include "webbits.h"
+# include <emscripten.h>
 #elif defined EDUKE32_IOS
 # include "iosbits.h"
 # include <mach/mach.h>
@@ -653,8 +657,10 @@ int main(int argc, char *argv[])
 #ifdef NOTBLOOD_ANDROID
     android_installcrashhandler("notblood.log");
 #endif
+#ifndef NOTBLOOD_WEB // the browser's console shows it
     if (freopen("stdout.txt", "w", stdout))
         setvbuf(stdout, NULL, _IONBF, 0);
+#endif
     ios_checkgamedata();
 #endif
 
@@ -2149,7 +2155,12 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
         (void)i;
         (void)borderless;
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#ifdef NOTBLOOD_WEB
+        // WebGL 2: textures of any size (gl4es still talks OpenGL ES 2.0 to it)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+#else
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+#endif
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
@@ -2663,6 +2674,9 @@ void videoShowFrame(int32_t w)
                 glsurface_refresh();
         }
 
+#ifdef NOTBLOOD_WEB
+        web_yield(1);  // the browser shows the frame
+#endif
         return;
     }
 #endif
@@ -2704,6 +2718,9 @@ void videoShowFrame(int32_t w)
     SDL_Flip(sdl_surface);
 #endif
     MicroProfileFlip();
+#ifdef NOTBLOOD_WEB
+    web_yield(1);  // the browser shows the frame
+#endif
 }
 
 //
@@ -3373,6 +3390,9 @@ int32_t handleevents(void)
 {
 #ifdef EDUKE32_ANDROID_LEGACY
     if (mobile_halted) return 0;
+#endif
+#ifdef NOTBLOOD_WEB
+    web_yield(0);  // loops that only wait still let the browser run
 #endif
 
     int32_t rv;

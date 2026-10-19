@@ -1123,7 +1123,9 @@ void SetupChosenMenus(void)
     menuOnline.Add(&itemOnlineHost, true);
     menuOnline.Add(&itemOnlineFind, false);
     menuOnline.Add(&itemOnlineJoin, false);
+#ifndef NOTBLOOD_WEB // no LAN games in a browser
     menuOnline.Add(&itemOnlineLanStats, false);
+#endif
     menuOnline.Add(&itemOnlineStatus, false);
     menuOnline.Add(&itemOnlineDashboard, false);
     menuOnline.Add(&itemBloodQAV, false);

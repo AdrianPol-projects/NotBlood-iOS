@@ -20,6 +20,8 @@ Optional, in the same folder:
 
 **Requirements:** iPadOS/iOS 15 or newer. Any iPad from the last several years runs it well in the OpenGL renderer.
 
+**No sideloading?** If you or a friend runs a NotBlood server ([SERVER.md](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/SERVER.md)), open its address followed by `/play/` in Safari and choose Share → **Add to Home Screen**. The same game runs as a web app: no signing, no 7-day limit, and it works offline. LAN games don't work there; online games do.
+
 ## What you get on iOS
 
 - **Touch controls:** a floating move stick, drag to look, and fire, jump, duck, use and weapon buttons, plus a weapon picker. There's a layout editor (move, resize and hide every button) and gyro aiming. Render scale goes from 100% down to 25% for older devices.

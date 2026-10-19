@@ -691,6 +691,136 @@ async def health(request):
     return web.json_response({"ok": True, "lobbies": len(relay.lobbies), "protocol": PROTOCOL})
 
 
+# ---- the web version of the game (/play) -----------------------------------------------------------
+#
+# The relay also serves NotBlood Chosen for web browsers at /play/: the page, the game (WebAssembly)
+# and its offline cache. It downloads the web build itself, from the newest release of WEB_REPO on
+# GitHub (the asset ending in -web.zip), when it starts and every WEB_UPDATE_HOURS, into
+# WEB_DIR/current. Players bring their own Blood files; nothing of the game data is on the server.
+
+WEB_DIR = Path(os.environ.get("WEB_DIR", str(DATA_DIR / "web")))
+WEB_REPO = os.environ.get("WEB_REPO", "AdrianPol-projects/NotBlood-Chosen")
+WEB_UPDATE_HOURS = float(os.environ.get("WEB_UPDATE_HOURS", "6"))  # 0: never download
+WEB_MAX_ZIP = 200 * 1024 * 1024
+WEB_TYPES = {
+    ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wasm": "application/wasm",
+    ".data": "application/octet-stream", ".webmanifest": "application/manifest+json", ".png": "image/png",
+    ".woff2": "font/woff2", ".txt": "text/plain",
+}
+WEB_MISSING_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>NotBlood Chosen</title><body style="background:#070202;color:#e8dcd6;font:18px system-ui;padding:2em">
+<p>The web version isn't on this server yet. It is downloaded automatically; try again in a few minutes.</p>"""
+
+
+async def play_redirect(request):
+    raise web.HTTPFound("/play/")
+
+
+async def play(request):
+    name = request.match_info.get("path", "") or "index.html"
+    root = (WEB_DIR / "current").resolve()
+    try:
+        path = (root / name).resolve()
+        path.relative_to(root)
+    except (ValueError, OSError):
+        raise web.HTTPNotFound()
+    if not path.is_file():
+        if name == "index.html":
+            return web.Response(text=WEB_MISSING_HTML, content_type="text/html", status=503,
+                                headers={"Cache-Control": "no-cache"})
+        raise web.HTTPNotFound()
+    headers = {"Cache-Control": "no-cache"}  # always checked with the server; the page's own cache works offline
+    ctype = WEB_TYPES.get(path.suffix)
+    if ctype:
+        headers["Content-Type"] = ctype
+    # FileResponse sends notblood.wasm.gz etc. instead when the browser takes gzip
+    return web.FileResponse(path, headers=headers)
+
+
+def web_installed():
+    try:
+        return (WEB_DIR / "installed.txt").read_text().strip()
+    except OSError:
+        return ""
+
+
+def web_unpack(zip_path, marker):
+    """Unpacks a downloaded web build next to the current one and swaps them (runs in a thread)."""
+    import shutil
+    import zipfile
+    new, cur, old = WEB_DIR / "new", WEB_DIR / "current", WEB_DIR / "old"
+    for d in (new, old):
+        shutil.rmtree(d, ignore_errors=True)
+    new.mkdir(parents=True)
+    with zipfile.ZipFile(zip_path) as z:
+        names = z.namelist()
+        if "index.html" not in names or "notblood.wasm" not in names:
+            raise ValueError("not a NotBlood web build")
+        for n in names:
+            if n.startswith("/") or ".." in n.split("/"):
+                raise ValueError("bad file name in the zip: %r" % n)
+        z.extractall(new)
+    if cur.exists():
+        cur.rename(old)
+    new.rename(cur)
+    shutil.rmtree(old, ignore_errors=True)
+    (WEB_DIR / "installed.txt").write_text(marker + "\n")
+    zip_path.unlink()
+
+
+async def web_update_once():
+    import aiohttp
+    WEB_DIR.mkdir(parents=True, exist_ok=True)
+    gh = {"User-Agent": "notblood-relay", "Accept": "application/vnd.github+json"}
+    timeout = aiohttp.ClientTimeout(total=900)
+    async with aiohttp.ClientSession(timeout=timeout, headers=gh) as http:
+        async with http.get("https://api.github.com/repos/%s/releases/latest" % WEB_REPO) as r:
+            if r.status != 200:
+                log.warning("web version: GitHub answered %d", r.status)
+                return
+            release = await r.json()
+        asset = next((a for a in release.get("assets", []) if a.get("name", "").endswith("-web.zip")), None)
+        if not asset:
+            return
+        marker = "%s %s %s" % (release.get("tag_name"), asset.get("id"), asset.get("updated_at"))
+        if marker == web_installed() and (WEB_DIR / "current" / "index.html").is_file():
+            return
+        if asset.get("size", 0) > WEB_MAX_ZIP:
+            log.warning("web version: %s is too big", asset.get("name"))
+            return
+        zip_path = WEB_DIR / "download.zip"
+        got = 0
+        async with http.get(asset["browser_download_url"], headers={"Accept": "application/octet-stream"}) as r:
+            if r.status != 200:
+                log.warning("web version: download answered %d", r.status)
+                return
+            with open(zip_path, "wb") as f:
+                async for chunk in r.content.iter_chunked(1 << 16):
+                    got += len(chunk)
+                    if got > WEB_MAX_ZIP:
+                        raise ValueError("download too big")
+                    f.write(chunk)
+    await asyncio.to_thread(web_unpack, zip_path, marker)
+    log.info("web version: installed %s (%s, %d KB)", asset.get("name"), release.get("tag_name"), got // 1024)
+
+
+async def web_updater(app):
+    async def loop():
+        await asyncio.sleep(3)
+        while True:
+            try:
+                await web_update_once()
+            except Exception as e:  # network trouble, GitHub limits: try again next time
+                log.warning("web version: update failed: %s", e)
+            # not there yet (the release is still being built): look again soon
+            have = (WEB_DIR / "current" / "index.html").is_file()
+            await asyncio.sleep(WEB_UPDATE_HOURS * 3600 if have else 600)
+    task = asyncio.create_task(loop()) if WEB_UPDATE_HOURS > 0 else None
+    yield
+    if task:
+        task.cancel()
+
+
 @web.middleware
 async def security_headers(request, handler):
     resp = await handler(request)
@@ -710,7 +840,10 @@ def make_app():
     app.router.add_get("/dash", dash_ws)
     app.router.add_get("/healthz", health)
     app.router.add_static("/static/", STATIC_DIR, show_index=False)
+    app.router.add_get("/play", play_redirect)
+    app.router.add_get("/play/{path:.*}", play)
     app.cleanup_ctx.append(dash_pusher)
+    app.cleanup_ctx.append(web_updater)
     return app
 
 

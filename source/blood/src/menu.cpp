@@ -4681,10 +4681,17 @@ void SetupNetworkMenu(void)
         strncpy(zNetAddressBuffer, gNetAddress, sizeof(zNetAddressBuffer)-1);
 
     menuNetwork.Add(&itemNetworkTitle, false);
+#ifdef NOTBLOOD_WEB
+    // browsers can't make LAN games: online (through the relay) and bots only
+    itemNetworkOnline.m_nY = 46;
+    itemNetworkBots.m_nY = 64;
+    menuNetwork.Add(&itemNetworkOnline, true);
+#else
     menuNetwork.Add(&itemNetworkHost, true);
     menuNetwork.Add(&itemNetworkJoin, false);
     menuNetwork.Add(&itemNetworkFind, false);
     menuNetwork.Add(&itemNetworkOnline, false);
+#endif
     menuNetwork.Add(&itemNetworkBots, false);
     menuNetwork.Add(&itemNetworkPlayer, false);
     menuNetwork.Add(&itemBloodQAV, false);

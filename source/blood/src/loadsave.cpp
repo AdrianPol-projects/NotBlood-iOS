@@ -20,6 +20,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 //-------------------------------------------------------------------------
+#include "webbits.h"
 #include <stdio.h>
 #include "build.h"
 #include "compat.h"
@@ -346,6 +347,9 @@ void LoadSave::SaveGame(char *pzFile)
 #endif
         rename(saveFileName, pzFile);
     }
+#ifdef NOTBLOOD_WEB
+    web_filesChanged();  // into the browser's storage
+#endif
 }
 
 class MyLoadSave : public LoadSave

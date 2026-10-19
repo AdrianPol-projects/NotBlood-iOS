@@ -5,6 +5,7 @@
 **Downloads**
 * Windows, Linux, macOS, Android: [NotBlood-Chosen releases](https://github.com/AdrianPol-projects/NotBlood-Chosen/releases)
 * iPad (unsigned IPA for sideloading): [NotBlood-iOS releases](https://github.com/AdrianPol-projects/NotBlood-iOS/releases)
+* Web browsers (iPad, phones, computers, no install): every NotBlood server serves it at `/play/` ([how it works](platform/Web/README.md))
 
 Unzip, copy your Blood files (One Unit Whole Blood: CD, GOG or Steam) next to the game and start it. The README in each download explains the rest.
 

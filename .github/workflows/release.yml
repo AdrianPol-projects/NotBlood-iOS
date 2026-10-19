@@ -16,9 +16,9 @@ name: Release builds
   workflow_dispatch:
     inputs:
       only:
-        description: 'Platforms to build: all; only macos or android (then only that download of the release is replaced); android-test (an APK artifact, nothing published)'
+        description: 'Platforms to build: all; only macos, android or web (then only that download of the release is replaced); android-test (an APK artifact, nothing published)'
         type: choice
-        options: [all, macos, android, android-test]
+        options: [all, macos, android, web, android-test]
         default: all
 
 permissions:
@@ -236,11 +236,37 @@ jobs:
           path: ./NotBlood.ipa
           if-no-files-found: error
 
+  # the web version (WebAssembly): the relay server (server/relay.py) installs this zip and serves it at /play
+  build-web:
+    name: Web browsers (WebAssembly)
+    if: github.repository == 'AdrianPol-projects/NotBlood-Chosen' && (github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'web')
+    runs-on: ubuntu-24.04
+    env:
+      EMSDK_VERSION: 4.0.15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/emsdk
+          key: emsdk-${{ env.EMSDK_VERSION }}
+      - name: Emscripten
+        run: |
+          [ -d ~/emsdk ] || git clone -q --depth 1 https://github.com/emscripten-core/emsdk.git ~/emsdk
+          ~/emsdk/emsdk install "$EMSDK_VERSION" > /dev/null
+          ~/emsdk/emsdk activate "$EMSDK_VERSION" > /dev/null
+      - name: Build
+        run: EMSDK=~/emsdk bash platform/Web/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notblood-web
+          path: build-web/NotBlood-Chosen-*-web.zip
+          if-no-files-found: error
+
   publish:
     name: Publish
-    needs: [build-linux, build-windows, build-macos, build-android, build-ios]
-    # skipped jobs (a macOS- or Android-only run) are fine, failed ones are not
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && inputs.only != 'android-test' && (needs.build-macos.result == 'success' || inputs.only == 'android') }}
+    needs: [build-linux, build-windows, build-macos, build-android, build-ios, build-web]
+    # skipped jobs (a macOS-, Android- or web-only run) are fine, failed ones are not
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && inputs.only != 'android-test' && (needs.build-macos.result == 'success' || inputs.only == 'android' || inputs.only == 'web') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -287,6 +313,9 @@ jobs:
           if [ "$ONLY" = all ]; then
             cp artifacts/notblood-ios/NotBlood.ipa "NotBlood-Chosen-$version-ios.ipa"
           fi
+          if [ "$ONLY" = all ] || [ "$ONLY" = web ]; then
+            cp artifacts/notblood-web/NotBlood-Chosen-*-web.zip .
+          fi
           ls -l NotBlood-Chosen-*
       - name: Publish to the release of this version
         env:
@@ -300,11 +329,12 @@ jobs:
             exit 0
           fi
           TAG="v$VERSION"
-          if [ "$ONLY" = macos ] || [ "$ONLY" = android ]; then
+          if [ "$ONLY" = macos ] || [ "$ONLY" = android ] || [ "$ONLY" = web ]; then
             # replace only that platform's download; the others stay as they are
             case "$ONLY" in
               macos) pattern='-macos\.zip$'; file=$(ls NotBlood-Chosen-*-macos.zip); name=macOS ;;
               android) pattern='-android\.apk$'; file=$(ls NotBlood-Chosen-*-android.apk); name=Android ;;
+              web) pattern='-web\.zip$'; file=$(ls NotBlood-Chosen-*-web.zip); name=web ;;
             esac
             gh release view "$TAG" >/dev/null
             for a in $(gh release view "$TAG" --json assets -q '.assets[].name' | grep -- "$pattern"); do

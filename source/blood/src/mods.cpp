@@ -38,6 +38,7 @@ See the GNU General Public License for more details.
 #include "levels.h"
 #include "mods.h"
 #include "view.h"
+#include "gorykill.h"
 
 #if !defined _WIN32 && !defined __ANDROID__ && !(defined __APPLE__ && TARGET_OS_IPHONE)
 extern char **environ;
@@ -107,6 +108,23 @@ void addEntry(int nKind, const char *pzName, const char *pzPath, const char *pzI
     Bstrncpyz(m.szIni, pzIni ? pzIni : "", sizeof(m.szIni));
 }
 
+// Blood Extra Crispy's folder (its EXTRAC.RFF): the path is kept from the game folder, as the game's
+// file loading wants it ("mods/BEC_1.2")
+bool addExtraCrispy(const char *pzPath, const char *pzRel)
+{
+    bool bFound = false;
+    if (BDIR *dir = Bopendir(pzPath))
+    {
+        while (Bdirent *d = Breaddir(dir))
+            if (!Bstrcasecmp(d->name, "EXTRAC.RFF"))
+                bFound = true;
+        Bclosedir(dir);
+    }
+    if (bFound)
+        addEntry(kModExtraCrispy, "Blood Extra Crispy", pzRel, NULL);
+    return bFound;
+}
+
 // a folder: its first episode .ini, if any
 void addFolder(const char *pzPath, const char *pzFolder)
 {
@@ -144,7 +162,9 @@ void scanDir(const char *pzRoot, const char *pzSub, bool bGroups)
             continue;
         char path[BMAX_PATH];
         Bsnprintf(path, sizeof(path), "%s/%s", base, d->name);
-        if (isDir(path))
+        char rel[BMAX_PATH];
+        Bsnprintf(rel, sizeof(rel), "%s/%s", pzSub, d->name);
+        if (isDir(path) && !addExtraCrispy(path, rel))
             addFolder(path, d->name);
         else if (bGroups && (hasExtension(d->name, ".zip") || hasExtension(d->name, ".grp") || hasExtension(d->name, ".pk3")))
         {
@@ -273,6 +293,14 @@ void modApplySelection(bool bCommandLine)
         break;
     case kModIni:
         break;
+    case kModExtraCrispy:
+        if (!isDir(m.szPath))
+        {
+            LOG_F(ERROR, "Mods: the folder of \"%s\" is gone (%s)", m.szName, m.szPath);
+            return;
+        }
+        goryKillSetModDir(m.szPath);
+        break;
     default:
         return;
     }
@@ -323,6 +351,14 @@ int modScan(void)
             nRoots++;
         Xfree(pzApp);
     }
+    // Blood Extra Crispy's folder put straight into the game folder
+    if (BDIR *dir = Bopendir("."))
+    {
+        while (Bdirent *d = Breaddir(dir))
+            if (d->name[0] != '.' && isDir(d->name))
+                addExtraCrispy(d->name, d->name);
+        Bclosedir(dir);
+    }
     for (int i = 0; i < nRoots; i++)
     {
         scanDir(roots[i], "addons", false);
@@ -355,7 +391,9 @@ bool modSelect(int nIndex)
         return false;
     }
     char path[BMAX_PATH] = "";
-    if (pMod->szPath[0])
+    if (pMod->nKind == kModExtraCrispy)
+        Bstrncpyz(path, pMod->szPath, sizeof(path));  // from the game folder
+    else if (pMod->szPath[0])
         absolutePath(pMod->szPath, path, sizeof(path));
     fprintf(fp, "; the mod NotBlood loads at startup (chosen in the MODS menu)\n");
     fprintf(fp, "name=%s\nkind=%d\npath=%s\nini=%s\n", pMod->szName, pMod->nKind, path, pMod->szIni);
@@ -411,7 +449,19 @@ void modRestart(const char *pzName)
         LOG_F(ERROR, "Mods: could not start the game again");
     }
 #endif
-    // iPad/Android: apps can't start themselves again
+#ifdef __ANDROID__
+    // a fresh process: Android would otherwise start the next game in this one, with its old state
+    {
+        extern void android_restartapp(void);
+        viewLoadingScreen(gMenuPicnum, "Mods", NULL, text);
+        videoNextPage();
+        android_restartapp();
+        for (uint32_t nStart = timerGetTicks(); timerGetTicks() - nStart < 3000;)
+            handleevents();
+        exit(0);  // the restart didn't come: at least the next start is a fresh one
+    }
+#endif
+    // iPad: apps can't start themselves again
     Bsnprintf(text, sizeof(text), "Open NotBlood again to play %s", pzName);
     for (uint32_t nStart = timerGetTicks(); timerGetTicks() - nStart < 4000;)
     {

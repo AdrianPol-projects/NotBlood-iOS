@@ -41,6 +41,9 @@ static int32_t g_vm_size = 0;
 
 static char artfilename[BMAX_PATH];
 static char artfilenameformat[BMAX_PATH];
+static char artextradir[BMAX_PATH];  // ART files may also be here (artSetExtraDir)
+static int32_t artextrafirst;        // ... and come before the search path's
+static uint8_t artfromextra[MAXARTFILES_BASE];
 static char mapartfilename[BMAX_PATH];  // map-specific ART file name
 static int32_t mapartfnXXofs;  // byte offset to 'XX' (the number part) in the above
 static int32_t artfilnum, artfilplc;
@@ -499,9 +502,40 @@ static const char *artGetIndexedFileName(int32_t tilefilei)
     else
     {
         Bsnprintf(artfilename, sizeof(artfilename), artfilenameformat, tilefilei);
+        if (artfromextra[tilefilei])
+        {
+            char name[BMAX_PATH];
+            Bstrncpyz(name, artfilename, sizeof(name));
+            if (artfromextra[tilefilei] == 1)  // as mods usually ship them (the lookup can't fix the case of a mixed path)
+                Bstrtolower(name);
+            Bsnprintf(artfilename, sizeof(artfilename), "%s/%s", artextradir, name);
+        }
 
         return artfilename;
     }
+}
+
+void artSetExtraDir(const char *dir, int32_t first)
+{
+    Bstrncpyz(artextradir, dir ? dir : "", sizeof(artextradir));
+    artextrafirst = first;
+}
+
+static buildvfs_kfd artOpenExtra(int32_t tilefilei, const char **fn)
+{
+    buildvfs_kfd fil = buildvfs_kfd_invalid;
+    for (uint8_t variant = 1; variant <= 2 && fil == buildvfs_kfd_invalid; variant++)
+    {
+        artfromextra[tilefilei] = variant;  // 1: tilesNNN.art, 2: the name as asked for
+        *fn = artGetIndexedFileName(tilefilei);
+        fil = kopen4load(*fn, 0);
+    }
+    if (fil == buildvfs_kfd_invalid)
+    {
+        artfromextra[tilefilei] = 0;
+        *fn = artGetIndexedFileName(tilefilei);
+    }
+    return fil;
 }
 
 // Returns:
@@ -511,11 +545,19 @@ static const char *artGetIndexedFileName(int32_t tilefilei)
 //<-1: per-map ART issue
 static int32_t artReadIndexedFile(int32_t tilefilei)
 {
-    const char *fn = artGetIndexedFileName(tilefilei);
     const int32_t permap = (tilefilei >= MAXARTFILES_BASE);  // is it a per-map ART file?
-    buildvfs_kfd fil;
+    const int32_t extra = !permap && artextradir[0];
+    const char *fn = artGetIndexedFileName(tilefilei);
+    buildvfs_kfd fil = buildvfs_kfd_invalid;
 
-    if ((fil = kopen4load(fn, 0)) != buildvfs_kfd_invalid)
+    if (extra && artextrafirst)  // the extra folder's version first (a mod's art)
+        fil = artOpenExtra(tilefilei, &fn);
+    if (fil == buildvfs_kfd_invalid)
+        fil = kopen4load(fn, 0);
+    if (fil == buildvfs_kfd_invalid && extra && !artextrafirst)  // only what the game's own files lack
+        fil = artOpenExtra(tilefilei, &fn);
+
+    if (fil != buildvfs_kfd_invalid)
     {
         artheader_t local;
         int const headerval = artReadHeader(fil, fn, &local);
@@ -606,6 +648,7 @@ int32_t artLoadFiles(const char *filename, int32_t askedsize)
 
     //    artsize = 0;
 
+    Bmemset(artfromextra, 0, sizeof(artfromextra));
     for (int tilefilei=0; tilefilei<MAXARTFILES_BASE; tilefilei++)
         artReadIndexedFile(tilefilei);
 

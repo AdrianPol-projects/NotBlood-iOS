@@ -50,6 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "warp.h"
 #ifdef NOONE_EXTENSIONS
 #include "nnexts.h"
+#include "gorykill.h"
 #endif
 #include "view.h"
 
@@ -2318,6 +2319,11 @@ char processTesla(PLAYER *pPlayer)
 void WeaponProcess(PLAYER *pPlayer) {
 
     pPlayer->flashEffect = ClipLow(pPlayer->flashEffect - 1, 0);
+    if (goryKillBusy(pPlayer)) // the weapon waits until the Gory Kill or kick is done
+    {
+        UpdateAimVector(pPlayer);
+        return;
+    }
     
     #ifdef NOONE_EXTENSIONS
     if (gPlayerCtrl[pPlayer->nPlayer].qavScene.index >= 0 && pPlayer->pXSprite->health > 0) {

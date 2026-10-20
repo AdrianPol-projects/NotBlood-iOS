@@ -77,6 +77,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "weather.h"
 #ifdef NOONE_EXTENSIONS
 #include "nnexts.h"
+#include "gorykill.h"
 #endif
 
 #ifdef _WIN32
@@ -1373,6 +1374,7 @@ void ProcessFrame(void)
         }
     }
     modesFrame();
+    goryKillFrame();
     trProcessBusy();
     evProcess((int)gFrameClock);
     seqProcess(kTicsPerFrame);
@@ -2193,7 +2195,14 @@ int app_main(int argc, char const * const * argv)
 #endif
     gSysRes.Init(pUserRFF ? pUserRFF : "BLOOD.RFF");
     gGuiRes.Init("GUI.RFF");
-    gSoundRes.Init(pUserSoundRFF ? pUserSoundRFF : "SOUNDS.RFF");
+    {
+        // Blood Extra Crispy (MODS menu) brings its own SOUNDS.RFF
+        char modSounds[BMAX_PATH] = "";
+        if (char const *pzMod = goryKillModFile("SOUNDS.RFF"))
+            Bstrncpyz(modSounds, pzMod, sizeof(modSounds));
+        gSoundRes.Init(pUserSoundRFF ? pUserSoundRFF : modSounds[0] ? modSounds : "SOUNDS.RFF");
+    }
+    goryKillInit(); // Blood Extra Crispy's files, if the player has them
 
     HookReplaceFunctions();
 

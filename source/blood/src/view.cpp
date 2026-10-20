@@ -64,6 +64,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "weather.h"
 #ifdef NOONE_EXTENSIONS
 #include "nnexts.h"
+#include "gorykill.h"
+#include "weaponlist.h"
 #endif
 
 struct VIEW {
@@ -5300,6 +5302,8 @@ RORHACK:
             if (gViewSize == 4 && !gHudCompetitiveMode) // with this view size, move up so it matches the same position as full hud
                 cY -= fix16_from_float(25.f/2.f);
             
+            if (goryKillDraw(gView, nShade, cX, cY, nPalette)) {}
+            else
             #ifdef NOONE_EXTENSIONS
                 if (gView->sceneQav < 0) WeaponDraw(gView, nShade, cX, cY, nPalette);
                 else if (gView->pXSprite->health > 0) playerQavSceneDraw(gView, nShade, cX, cY, nPalette);
@@ -5311,6 +5315,8 @@ RORHACK:
             #else
                 WeaponDraw(gView, nShade, cX, cY, nPalette);
             #endif
+            goryKillDrawScreenBlood(gView);
+            weaponListDraw(gView);
            
 
         }

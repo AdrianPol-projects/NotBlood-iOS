@@ -40,6 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sound.h"
 #include "tile.h"
 #include "view.h"
+#include "weaponlist.h"
 #ifdef EDUKE32_IOS
 #include "iosbits.h"
 #endif
@@ -393,7 +394,11 @@ void CONFIG_SetDefaults(void)
 #elif defined EDUKE32_IOS
     // default to the panel's native resolution; lower presets are in Options > Video
     int32_t pixw, pixh;
+#ifdef NOTBLOOD_WEB
+    ios_scaledsize(web_defaultscale(), &pixw, &pixh);
+#else
     ios_getscreensize(&pixw, &pixh, NULL, NULL);
+#endif
     gSetup.xdim = pixw;
     gSetup.ydim = pixh;
 #else
@@ -638,6 +643,7 @@ void CONFIG_SetDefaults(void)
     gWeaponFastSwitch = 0;
     gLockManualSaving = 0;
     gRestoreLastSave = 1;
+    gWeaponSwitchList = 0;
     gAutosave = 1;
     gAutosaveInCurLevel = false;
 
@@ -985,6 +991,7 @@ int CONFIG_ReadSetup(void)
     SCRIPT_GetNumber(scripthandle, "Game Options", "Autosave", &gAutosave);
     SCRIPT_GetNumber(scripthandle, "Game Options", "LockManualSaving", &gLockManualSaving);
     SCRIPT_GetNumber(scripthandle, "Game Options", "RestoreLastSave", &gRestoreLastSave);
+    SCRIPT_GetNumber(scripthandle, "Game Options", "WeaponSwitchList", &gWeaponSwitchList);
     SCRIPT_GetNumber(scripthandle, "Game Options", "VanillaMode", &gVanilla);
     SCRIPT_GetNumber(scripthandle, "Game Options", "QuadDamagePowerup", &gQuadDamagePowerup);
     SCRIPT_GetNumber(scripthandle, "Game Options", "BeastVision", &gBeastVision);
@@ -1325,6 +1332,7 @@ void CONFIG_WriteSetup(uint32_t flags)
     SCRIPT_PutNumber(scripthandle, "Game Options", "Autosave", gAutosave, FALSE, FALSE);
     SCRIPT_PutNumber(scripthandle, "Game Options", "LockManualSaving", gLockManualSaving, FALSE, FALSE);
     SCRIPT_PutNumber(scripthandle, "Game Options", "RestoreLastSave", gRestoreLastSave, FALSE, FALSE);
+    SCRIPT_PutNumber(scripthandle, "Game Options", "WeaponSwitchList", gWeaponSwitchList, FALSE, FALSE);
     SCRIPT_PutNumber(scripthandle, "Game Options", "VanillaMode", gVanilla, FALSE, FALSE);
     SCRIPT_PutNumber(scripthandle, "Game Options", "QuadDamagePowerup", gQuadDamagePowerup, FALSE, FALSE);
     SCRIPT_PutNumber(scripthandle, "Game Options", "BeastVision", gBeastVision, FALSE, FALSE);

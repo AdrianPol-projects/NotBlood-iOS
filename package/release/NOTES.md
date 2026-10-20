@@ -78,6 +78,11 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 - A live dashboard in the browser: lobbies, players' health, armor, weapons and keys, a live level map and an event list.
 - FIND LAN GAMES. The host screen shows your address, and you get clear messages when versions or mods differ.
 
+**Blood Extra Crispy as a mod (test)**
+- The *Blood Extra Crispy* mod by VGames, played in NotBlood: choose it in MODS (the game restarts). It brings its look (title, menu background, sprites), its sounds and its Gory Kills: walk up to a nearly dead enemy, press USE, and Caleb finishes it in first person (cultists, zombies, fat zombies, flesh gargoyles, gill beasts, innocents, hell hounds, phantasms).
+- Needs the mod's own files, which aren't included: download *Blood Extra Crispy* v1.2 from ModDB and put its `BEC_1.2` folder into the `mods` folder (or the game folder). Its maps, weapons and scripts are made for Nightdive's remaster and aren't used. Your Blood files stay as they are.
+- Gory Kills are single player only for now.
+
 **Everything else**
 - MODS menu for add-on episodes and mods. A mod that breaks the start is switched off again.
 - Cutscenes from the CD's `movie` folder in any upper or lower case.

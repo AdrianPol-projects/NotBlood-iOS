@@ -11,8 +11,17 @@ function $(id) { return document.getElementById(id); }
 
 // ---- offline / install --------------------------------------------------------------------------
 
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'))
-    navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('service worker:', e); });
+var importing = false;
+
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    var hadWorker = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function (e) { console.warn('service worker:', e); });
+    // a new version took over (it checks on every start with internet): use it right away, unless
+    // the game is running or files are being copied
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (hadWorker && !started && !importing) location.reload();
+    });
+}
 
 function isStandalone() {
     return navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches ||
@@ -120,13 +129,43 @@ function mkdirs(path) {
 var SKIP_EXT = /\.(dem|exe|dll|com|bat|gog|ins|iso|cue|bin|msi)$/i;
 var MAX_FILE = 150 * 1048576;
 
+// Blood Extra Crispy (a mod in the MODS menu): its art, sounds and Gory Kill animations, in their own
+// folder. Its other files (maps, BLOOD.INI, scripts) are for the remaster only, and none of them may
+// replace Blood's own.
+var BEC_DIR = 'mods/BEC_1.2';
+var BEC_NEEDED = /^(extrac\.rff|sounds\.rff|surface\.dat|tiles0\d\d\.art)$/i;
+
+async function importExtraCrispy(entries, becRoot) {
+    var mine = entries.filter(function (e) {
+        var rel = e.path.slice(becRoot.length);
+        return e.path.indexOf(becRoot) === 0 && rel.indexOf('/') < 0 && BEC_NEEDED.test(rel);
+    });
+    for (var i = 0; i < mine.length; i++) {
+        var name = mine[i].path.slice(becRoot.length);
+        $('importText').textContent = 'Copying Extra Crispy\'s ' + name + ' (' + (i + 1) + '/' + mine.length + ')';
+        var data = await mine[i].read();
+        mkdirs(BEC_DIR + '/' + name);
+        game.FS.writeFile(GAME_DIR + '/' + BEC_DIR + '/' + name, data);
+        await new Promise(function (r) { setTimeout(r, 0); });
+    }
+    await new Promise(function (r) { syncFiles(r); });
+    $('importText').textContent = 'Blood Extra Crispy: ' + mine.length + ' files copied. ' +
+        'Choose it in the game: MODS > BLOOD EXTRA CRISPY.';
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+    refresh();
+}
+
 // entries: [{ path: 'BLOOD/BLOOD.RFF', size, read: () => Promise<Uint8Array> }]
 async function importEntries(entries) {
+    entries.forEach(function (e) { e.path = e.path.replace(/\\/g, '/'); });
+    var bec = entries.find(function (e) { return /(^|\/)extrac\.rff$/i.test(e.path); });
+    if (bec)
+        return importExtraCrispy(entries, bec.path.slice(0, bec.path.length - 10));
+
     // the folder that holds BLOOD.RFF is the game folder; a backup zip goes in as it is
     var root = null;
     entries.forEach(function (e) {
-        var p = e.path.replace(/\\/g, '/');
-        e.path = p;
+        var p = e.path;
         if (/(^|\/)blood\.rff$/i.test(p)) {
             var d = p.slice(0, p.length - 9);
             if (root === null || d.length < root.length) root = d;
@@ -172,6 +211,7 @@ function fileEntries(fileList) {
 
 async function importPicked(fileList) {
     if (!game || !fileList.length) return;
+    importing = true;
     try {
         var entries = [];
         var list = fileEntries(fileList);
@@ -186,6 +226,7 @@ async function importPicked(fileList) {
         console.error(err);
         $('importText').textContent = 'Copying failed: ' + err.message;
     }
+    importing = false;
 }
 
 $('pickFiles').onchange = function () { importPicked(this.files); this.value = ''; };
@@ -305,6 +346,8 @@ function setLoad(text, pct) {
 function notbloodLoaded() {
     NotBlood({
         canvas: $('canvas'),
+        // the same build's files, never ones a browser or Cloudflare kept from an older one
+        locateFile: function (path, dir) { return dir + path + '?v=__BUILD__'; },
         print: function (s) { console.log(s); },
         printErr: function (s) { console.warn(s); },
         setStatus: function (s) {
@@ -333,9 +376,35 @@ function notbloodLoaded() {
     });
 }
 
+// Safari only lets a page play sound that started during a tap: the game's audio (SDL) would start
+// later and stay silent, so the tap on Play makes it and SDL uses it. Sound that stopped (another
+// app, a call, the iPad locked) comes back with the next tap or key.
+function unlockAudio() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || (game.SDL2 && game.SDL2.audioContext)) return;
+    var ctx;
+    try { ctx = new AC({ latencyHint: 'playback' }); } catch (e) { try { ctx = new AC(); } catch (e2) { return; } }
+    game.SDL2 = game.SDL2 || {};
+    game.SDL2.audioContext = ctx;
+    function wake() {
+        if (ctx.state !== 'running') ctx.resume().catch(function () {});
+    }
+    // a moment of silence played inside the tap is what unlocks it on older iPads
+    try {
+        var src = ctx.createBufferSource();
+        src.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        src.connect(ctx.destination);
+        src.start(0);
+    } catch (e) { /* not needed elsewhere */ }
+    wake();
+    ['touchend', 'mousedown', 'keydown'].forEach(function (t) { document.addEventListener(t, wake, true); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) wake(); });
+}
+
 $('play').onclick = function () {
     if (!game || started || !haveGameData()) return;
     started = true;
+    unlockAudio();
     document.body.classList.add('playing');
     var canvas = $('canvas');
     canvas.focus();

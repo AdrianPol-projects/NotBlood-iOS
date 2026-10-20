@@ -78,6 +78,11 @@ static bool callStatic(const char *pzMethod, const char *pzSig, ...)
     return bOk;
 }
 
+void android_restartapp(void)
+{
+    callStatic("restartApp", "()V");
+}
+
 // ---- folders --------------------------------------------------------------------------------
 
 char *ios_getappdir(void)

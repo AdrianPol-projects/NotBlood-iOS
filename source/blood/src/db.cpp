@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef NOONE_EXTENSIONS
 #include "nnexts.h"
 #include "view.h"
+#include "gorykill.h"
 #endif
 
 #define kMapHeaderNew 0x7474614D // 'ttaM' signature
@@ -1716,7 +1717,24 @@ int dbLoadMap(const char *pPath, int *pX, int *pY, int *pZ, short *pAngle, short
         gSysRes.RemoveNode(pNode);
     }
 
-    pNode = gSysRes.Lookup(pPath, "MAP");
+    pNode = NULL;
+    {
+        // Blood Extra Crispy (MODS menu) has its own versions of the official maps
+        char file[BMAX_PATH];
+        Bstrncpyz(file, pPath, sizeof(file));
+        ChangeExtension(file, ".MAP");
+        if (char const *pzModMap = goryKillModFile(file))
+        {
+            char modMap[BMAX_PATH];
+            Bstrncpyz(modMap, pzModMap, sizeof(modMap));
+            ChangeExtension(modMap, "");
+            pNode = gSysRes.Lookup(modMap, "MAP");
+            if (pNode)
+                LOG_F(INFO, "Map %s from %s", pPath, pzModMap);
+        }
+    }
+    if (!pNode)
+        pNode = gSysRes.Lookup(pPath, "MAP");
     if (!pNode)
     {
         char name2[BMAX_PATH];

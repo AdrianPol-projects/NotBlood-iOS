@@ -15,6 +15,7 @@ Unzip, copy your Blood files (One Unit Whole Blood: CD, GOG or Steam) next to th
 * **Co-op saves**, 8 slots, saved on every player's machine. Load *where you saved* (positions, keys, enemies) or *restart the level with your gear*. Players get their saves by name, new players start with the pitchfork, missing players leave the level. The game saves itself when a player leaves.
 * **Online lobbies** through your own relay server ([how to set it up: SERVER.md](SERVER.md)): host or find lobbies, protected by a server key, no port forwarding.
 * **Live dashboard** in the browser: lobbies, players' health, armor, weapons, keys, a live level map, an event list, big-screen mode, and you choose what it shows.
+* **Blood Extra Crispy** (test): with that mod's `BEC_1.2` folder in `mods`, choose it in MODS for its look, sounds and Gory Kills (USE on a nearly dead enemy finishes it in first person).
 * **MODS menu**: add-on episodes (`addons/`, e.g. Cryptic Passage) and mods (`mods/` folders, `.zip`, `.grp`, `.pk3`). A mod that breaks the start is switched off again.
 * **FIND LAN GAMES**, your address on the host screen, clear messages when versions or mods differ.
 * Cutscenes from the CD's `movie` folder in any upper/lower case.

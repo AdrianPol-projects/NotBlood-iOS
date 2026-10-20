@@ -19,6 +19,12 @@ void web_filesChanged(void);
 // the device has a touch screen (tablets, phones, touch laptops)
 int web_hastouch(void);
 
+// the page's size in pixels changed (and stayed so for a moment) since the last call
+int web_screenchanged(void);
+
+// the render scale (percent of the page's pixels) of a first start
+int web_defaultscale(void);
+
 #ifdef __cplusplus
 }
 #endif

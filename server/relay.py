@@ -695,12 +695,13 @@ async def health(request):
 #
 # The relay also serves NotBlood Chosen for web browsers at /play/: the page, the game (WebAssembly)
 # and its offline cache. It downloads the web build itself, from the newest release of WEB_REPO on
-# GitHub (the asset ending in -web.zip), when it starts and every WEB_UPDATE_HOURS, into
-# WEB_DIR/current. Players bring their own Blood files; nothing of the game data is on the server.
+# GitHub (the asset ending in -web.zip), when it starts, every WEB_UPDATE_HOURS and when someone opens
+# the page (at most every WEB_PAGE_CHECK_MINUTES), into WEB_DIR/current. Players bring their own Blood files; nothing of the game data is on the server.
 
 WEB_DIR = Path(os.environ.get("WEB_DIR", str(DATA_DIR / "web")))
 WEB_REPO = os.environ.get("WEB_REPO", "AdrianPol-projects/NotBlood-Chosen")
-WEB_UPDATE_HOURS = float(os.environ.get("WEB_UPDATE_HOURS", "6"))  # 0: never download
+WEB_UPDATE_HOURS = float(os.environ.get("WEB_UPDATE_HOURS", "1"))  # 0: never download
+WEB_PAGE_CHECK_MINUTES = float(os.environ.get("WEB_PAGE_CHECK_MINUTES", "10"))  # 0: only on the timer
 WEB_MAX_ZIP = 200 * 1024 * 1024
 WEB_TYPES = {
     ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wasm": "application/wasm",
@@ -729,6 +730,8 @@ async def play(request):
             return web.Response(text=WEB_MISSING_HTML, content_type="text/html", status=503,
                                 headers={"Cache-Control": "no-cache"})
         raise web.HTTPNotFound()
+    if name == "index.html":
+        web_check_soon()
     headers = {"Cache-Control": "no-cache"}  # always checked with the server; the page's own cache works offline
     ctype = WEB_TYPES.get(path.suffix)
     if ctype:
@@ -804,14 +807,40 @@ async def web_update_once():
     log.info("web version: installed %s (%s, %d KB)", asset.get("name"), release.get("tag_name"), got // 1024)
 
 
+web_checking = None    # the running check (one at a time)
+web_last_check = 0.0   # time.monotonic() of the last one
+
+
+async def web_check():
+    global web_last_check
+    web_last_check = time.monotonic()
+    try:
+        await web_update_once()
+    except Exception as e:  # network trouble, GitHub limits: try again next time
+        log.warning("web version: update failed: %s", e)
+
+
+def web_check_soon():
+    """Someone opened the page: look for a new web version in the background, if it's been a while.
+    That player gets it on their next start; the page's offline cache picks it up meanwhile."""
+    global web_checking
+    if WEB_UPDATE_HOURS <= 0 or WEB_PAGE_CHECK_MINUTES <= 0:
+        return
+    if (web_checking and not web_checking.done()) or time.monotonic() - web_last_check < WEB_PAGE_CHECK_MINUTES * 60:
+        return
+    web_checking = asyncio.create_task(web_check())
+
+
 async def web_updater(app):
     async def loop():
+        global web_checking
         await asyncio.sleep(3)
         while True:
-            try:
-                await web_update_once()
-            except Exception as e:  # network trouble, GitHub limits: try again next time
-                log.warning("web version: update failed: %s", e)
+            if web_checking and not web_checking.done():
+                await web_checking
+            else:
+                web_checking = asyncio.create_task(web_check())
+                await web_checking
             # not there yet (the release is still being built): look again soon
             have = (WEB_DIR / "current" / "index.html").is_file()
             await asyncio.sleep(WEB_UPDATE_HOURS * 3600 if have else 600)

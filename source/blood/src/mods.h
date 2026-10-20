@@ -31,6 +31,7 @@ enum
     kModFolder,
     kModGroup,
     kModIni,
+    kModExtraCrispy,  // Blood Extra Crispy's folder (gorykill.cpp): its art, sounds and Gory Kills
 };
 
 #define kMaxModEntries 12

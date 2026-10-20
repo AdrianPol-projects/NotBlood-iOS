@@ -576,7 +576,7 @@ void Resource::AddFromBuffer(const char* name, const char* type, char* data, int
         int nOldNameLength = strlen(oldName);
         node->type = (char*)Alloc(nTypeLength+1);
         node->name = (char*)Alloc(nNameLength+1);
-        node->name = (char*)Alloc(nOldNameLength+1);
+        node->oldname = (char*)Alloc(nOldNameLength+1);
         strcpy(node->type, type2);
         strcpy(node->name, name2);
         strcpy(node->oldname, oldName);

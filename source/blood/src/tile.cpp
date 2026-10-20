@@ -34,6 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "globals.h"
 #include "resource.h"
 #include "tile.h"
+#include "gorykill.h"
 #include "view.h"
 
 void qloadvoxel(int32_t nVoxel)
@@ -97,7 +98,8 @@ int tileInit(char a1, const char *a2)
     for (int i = 0; i < kMaxTiles; i++)
         voxelIndex[i] = 0;
 
-    int hFile = kopen4loadfrommod("SURFACE.DAT", 0);
+    char const *pzModSurface = goryKillModFile("SURFACE.DAT"); // Blood Extra Crispy's covers its new tiles
+    int hFile = kopen4loadfrommod(pzModSurface ? pzModSurface : "SURFACE.DAT", 0);
     if (hFile != -1)
     {
         kread(hFile, surfType, sizeof(surfType));

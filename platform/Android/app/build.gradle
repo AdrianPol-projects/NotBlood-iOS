@@ -15,7 +15,9 @@ android {
     ndkVersion '26.3.11579264'
 
     defaultConfig {
-        applicationId 'com.adrianpol.notblood'
+        // a test build can sit next to the normal app: -PappIdSuffix=.crispy -PappName="NotBlood Crispy"
+        applicationId 'com.adrianpol.notblood' + (project.findProperty('appIdSuffix') ?: '')
+        resValue 'string', 'app_name', (project.findProperty('appName') ?: 'NotBlood')
         minSdk 21
         targetSdk 34
         versionCode((project.findProperty('versionCode') ?: '1') as int)

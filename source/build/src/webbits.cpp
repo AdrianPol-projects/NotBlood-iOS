@@ -37,17 +37,29 @@ static char const kAppDir[] = "/app";
 
 // ---- giving control back to the browser ------------------------------------------------------
 
-// waits for the browser's next animation frame (the screen refresh)
+// waits for the browser's next animation frame (the screen refresh), at most 60 a second: a 120 Hz
+// iPad or phone would draw twice as many frames for the same game (and the battery)
 EM_ASYNC_JS(void, web_waitAnimationFrame, (), {
     await new Promise(function(resolve) {
         if (document.hidden)
+        {
             setTimeout(resolve, 16);  // no animation frames in a hidden tab
-        else
-            requestAnimationFrame(function() { resolve(); });
+            return;
+        }
+        function frame(t) {
+            if (Module.webLastFrame && t - Module.webLastFrame < 10 && t > Module.webLastFrame)
+            {
+                requestAnimationFrame(frame);
+                return;
+            }
+            Module.webLastFrame = t;
+            resolve();
+        }
+        requestAnimationFrame(frame);
     });
 });
 
-static double s_lastYield;
+static double s_lastYield, s_lastFrame;
 
 void web_yield(int bFrame)
 {
@@ -55,11 +67,13 @@ void web_yield(int bFrame)
     if (bFrame)
     {
         web_waitAnimationFrame();
-        s_lastYield = emscripten_get_now();
+        s_lastYield = s_lastFrame = emscripten_get_now();
     }
-    else if (now - s_lastYield > 12)
+    else if (now - s_lastYield > 12 && now - s_lastFrame > 100)
     {
-        // a loop that only waits (timers, menus without a new frame, network): let the browser run
+        // a loop that only waits (timers, network, loading): let the browser run. Not while frames
+        // are being drawn: the game checks input between drawing the view and showing it, and the
+        // browser would show that unfinished picture (black flashes on slow phones)
         emscripten_sleep(0);
         s_lastYield = emscripten_get_now();
     }
@@ -139,6 +153,20 @@ void ios_scaledsize(int pct, int32_t *w, int32_t *h)
     *h = (fh * pct / 100) & ~1;
 }
 
+// the scale a first start uses: at most about 1920x1080 (phones and iPads have far more pixels, and the
+// browser draws through WebGL); the full resolution is in Options > Video
+int web_defaultscale(void)
+{
+    for (int const pct : ios_renderscales)
+    {
+        int32_t sw, sh;
+        ios_scaledsize(pct, &sw, &sh);
+        if (sw * sh <= 2200000)
+            return pct;
+    }
+    return 25;
+}
+
 int ios_scaleforsize(int32_t w)
 {
     for (int const pct : ios_renderscales)
@@ -148,14 +176,59 @@ int ios_scaleforsize(int32_t w)
         if (abs(sw - w) <= 2)
             return pct;
     }
-    return 100;
+    return web_defaultscale();  // a size saved for another screen shape (turned, another device)
 }
 
-// the canvas keeps its size on the page (CSS); a lower render scale only gives it fewer pixels
+static int s_renderScale = 100;
+
+// the canvas keeps its size on the page (CSS); a lower render scale only gives it fewer pixels.
+// pct -1: the current scale again (the page changed size)
 void ios_setrenderscale(SDL_Window *window, int pct)
 {
-    UNREFERENCED_PARAMETER(window);
-    UNREFERENCED_PARAMETER(pct);
+    if (pct > 0)
+        s_renderScale = clamp(pct, 25, 100);
+    if (!window)
+        return;
+    int32_t w, h;
+    ios_scaledsize(s_renderScale, &w, &h);
+    int cw = 0, ch = 0;
+    SDL_GetWindowSize(window, &cw, &ch);
+    if (cw != w || ch != h)
+    {
+        LOG_F(INFO, "web: canvas %dx%d (%d%% of %dx%d)", w, h, s_renderScale, w * 100 / s_renderScale, h * 100 / s_renderScale);
+        SDL_SetWindowSize(window, w, h);
+    }
+}
+
+int web_screenchanged(void)
+{
+    // a quarter of a second without changes first: turning a phone resizes the page several times
+    static int32_t s_w, s_h, s_newW, s_newH;
+    static double s_since;
+    int32_t w, h;
+    ios_getscreensize(&w, &h, NULL, NULL);
+    if (!s_w)
+    {
+        s_w = w;
+        s_h = h;
+        return 0;
+    }
+    if (w == s_w && h == s_h)
+        return 0;
+    double const now = emscripten_get_now();
+    if (w != s_newW || h != s_newH)
+    {
+        s_newW = w;
+        s_newH = h;
+        s_since = now;
+        return 0;
+    }
+    if (now - s_since < 250)
+        return 0;
+    LOG_F(INFO, "web: the page is now %dx%d pixels (was %dx%d)", w, h, s_w, s_h);
+    s_w = w;
+    s_h = h;
+    return 1;
 }
 
 // ---- OpenGL through gl4es on WebGL ----------------------------------------------------------

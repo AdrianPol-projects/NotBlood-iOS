@@ -434,7 +434,8 @@ void SetupModsMenu(CGameMenuItemChain *pItem)
         }
         else
             Bstrncpyz(zModInfo[i], pMod->nKind == kModFolder ? (pMod->szIni[0] ? "EPISODES" : "FOLDER") :
-                pMod->nKind == kModGroup ? "PACK" : pMod->nKind == kModIni ? "EPISODES" : "", sizeof(zModInfo[i]));
+                pMod->nKind == kModGroup ? "PACK" : pMod->nKind == kModIni ? "EPISODES" : pMod->nKind == kModExtraCrispy ? "GORY KILLS" : "",
+                sizeof(zModInfo[i]));
     }
     menuMods.SetFocusItem(pModItems[nFocus]);
 }

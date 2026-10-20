@@ -2171,8 +2171,16 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
 
         LOG_F(INFO, "iOS: creating OpenGL ES 2.0 window (%dx%d)", x, y);
         ios_setrenderscale(NULL, ios_scaleforsize(x)); // applied by ios_initgl4es() once the view exists
+#ifdef NOTBLOOD_WEB
+        // the canvas gets exactly the pixels it shows (the page stretches it over the screen). No SDL
+        // full screen: SDL sizes that from screen.width/height (portrait on an iPad held sideways:
+        // a squashed picture) and asks the browser for full screen on the next tap
+        ios_scaledsize(ios_scaleforsize(x), &x, &y);
+        sdl_window = SDL_CreateWindow("", 0, 0, x, y, SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS);
+#else
         sdl_window = SDL_CreateWindow("", 0, 0, x, y,
                                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
+#endif
 
         if (sdl_window)
             sdl_context = SDL_GL_CreateContext(sdl_window);
@@ -2285,7 +2293,15 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
         // init
 #ifdef EDUKE32_IOS
         (void)borderless;
+#ifdef NOTBLOOD_WEB
+        {
+            int32_t sw, sh;  // the whole canvas; the game's frame is fitted into it (ios_updategamerect)
+            ios_scaledsize(100, &sw, &sh);
+            sdl_window = SDL_CreateWindow("", 0, 0, sw, sh, SDL_WINDOW_BORDERLESS);
+        }
+#else
         sdl_window = SDL_CreateWindow("", 0, 0, x, y, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
+#endif
         if (!sdl_window)
             SDL2_VIDEO_ERR("SDL_CreateWindow");
 
@@ -2568,6 +2584,15 @@ void videoShowFrame(int32_t w)
 #endif
 #ifdef EDUKE32_IOS
         {
+#ifdef NOTBLOOD_WEB
+            // the page changed size (turned, split view, full screen): the canvas follows, and below
+            // the game's video mode follows the canvas
+            if (web_screenchanged())
+            {
+                ios_setrenderscale(sdl_window, -1);
+                modeschecked = 0;
+            }
+#endif
             int outw, outh;
             SDL_GL_GetDrawableSize(sdl_window, &outw, &outh);
 
@@ -2699,6 +2724,15 @@ void videoShowFrame(int32_t w)
         if (++classicFramesShown == 120)
             ios_glstartupok();
     }
+#ifdef NOTBLOOD_WEB
+    if (web_screenchanged())  // the canvas follows the page; the frame is fitted into it again
+    {
+        int32_t sw, sh;
+        ios_scaledsize(100, &sw, &sh);
+        SDL_SetWindowSize(sdl_window, sw, sh);
+        modeschecked = 0;
+    }
+#endif
     ios_updategamerect();
     SDL_UpdateTexture(sdl_texture, NULL, sdl_surface->pixels, sdl_surface->pitch);
     SDL_SetRenderDrawColor(sdl_renderer, 0, 0, 0, 255);

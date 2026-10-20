@@ -10,7 +10,10 @@ var FILES = [
 ];
 
 self.addEventListener('install', function (e) {
-    e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
+    // past the browser's own cache: Cloudflare lets browsers keep .js and .css for hours, and a new
+    // notblood.wasm with an old notblood.js doesn't run
+    var fresh = FILES.map(function (f) { return new Request(f, { cache: 'reload' }); });
+    e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(fresh); }).then(function () { return self.skipWaiting(); }));
 });
 
 self.addEventListener('activate', function (e) {

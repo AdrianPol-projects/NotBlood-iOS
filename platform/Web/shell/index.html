@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=__BUILD__">
 </head>
 <body>
 <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
@@ -21,7 +21,7 @@
 <main id="launcher">
   <header>
     <h1>NotBlood <span>Chosen</span></h1>
-    <p class="sub">Blood in your browser &middot; version __VERSION__</p>
+    <p class="sub">Blood in your browser &middot; version __VERSION__ <small>(build __BUILD__)</small></p>
   </header>
 
   <section id="loading" class="card">
@@ -73,6 +73,9 @@
   <section class="card small">
     <p><b>Online play:</b> MULTIPLAYER &gt; ONLINE. Leave SERVER empty to use the server this page comes
       from and enter its key. LAN games aren't possible in a browser.</p>
+    <p><b>Blood Extra Crispy:</b> download the mod (by VGames, on ModDB) and choose its <code>BEC_1.2</code>
+      folder or its <code>.zip</code> with &ldquo;Choose files&rdquo;. Then MODS &gt; BLOOD EXTRA CRISPY in the game:
+      its look and sounds, and USE on a nearly dead enemy finishes it in first person.</p>
     <p><b>Controls:</b> keyboard and mouse (click the game to capture the mouse), a game controller, or the
       touch controls on tablets and phones.</p>
     <p>NotBlood Chosen is free software (GPL 2), based on <a href="https://github.com/clipmove/NotBlood">NotBlood</a>.
@@ -81,7 +84,7 @@
   </section>
 </main>
 
-<script src="app.js"></script>
-<script src="notblood.js" async onload="notbloodLoaded()"></script>
+<script src="app.js?v=__BUILD__"></script>
+<script src="notblood.js?v=__BUILD__" async onload="notbloodLoaded()"></script>
 </body>
 </html>

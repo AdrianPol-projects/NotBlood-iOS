@@ -516,6 +516,8 @@ blood_game_objs := \
 	menuchosen.cpp \
 	bot.cpp \
 	chosenmodes.cpp \
+	gorykill.cpp \
+	weaponlist.cpp \
 	controls.cpp \
 	credits.cpp \
 	db.cpp \

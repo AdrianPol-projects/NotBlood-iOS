@@ -30,6 +30,24 @@ public class NotBloodActivity extends SDLActivity {
         });
     }
 
+    /**
+     * Starts the game again in a fresh process (choosing a mod): the old process ends, or Android
+     * would hand the next start the same native library with its old state.
+     */
+    public static void restartApp() {
+        final SDLActivity activity = mSingleton;
+        if (activity == null)
+            return;
+        activity.runOnUiThread(() -> {
+            Intent intent = activity.getPackageManager().getLaunchIntentForPackage(activity.getPackageName());
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                activity.startActivity(intent);
+            }
+            Runtime.getRuntime().exit(0);
+        });
+    }
+
     /** Renders at w x h and lets the hardware scaler fill the screen (0, 0: the screen's size). */
     public static void setRenderSize(final int w, final int h) {
         final SDLActivity activity = mSingleton;

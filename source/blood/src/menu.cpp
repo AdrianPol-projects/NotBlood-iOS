@@ -44,6 +44,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sound.h"
 #include "tile.h"
 #include "view.h"
+#include "weaponlist.h"
 #include "weather.h"
 
 void SaveGame(CGameMenuItemZEditBitmap *, CGameMenuEvent *);
@@ -831,6 +832,7 @@ void SetWeaponFastSwitch(CGameMenuItemZBool *pItem);
 void SetAutosaveMode(CGameMenuItemZCycle *pItem);
 void SetLockSaving(CGameMenuItemZBool *pItem);
 void SetRestoreLastSave(CGameMenuItemZBool *pItem);
+void SetWeaponSwitchList(CGameMenuItemZBool *pItem);
 void SetVanillaMode(CGameMenuItemZCycle *pItem);
 
 ///////////////
@@ -872,6 +874,7 @@ CGameMenuItemSlider itemOptionsGameSliderAutoAimRange("AUTO AIM RANGE:", 3, 66, 
 CGameMenuItemZBool itemOptionsGameBoolAutoRun("AUTO RUN:", 3, 66, 80, 180, 0, SetAutoRun, NULL, NULL);
 CGameMenuItemZCycle itemOptionsGameWeaponSwitch("EQUIP PICKUPS:", 3, 66, 90, 180, 0, SetWeaponSwitch, pzWeaponSwitchStrings, ARRAY_SSIZE(pzWeaponSwitchStrings), 0);
 CGameMenuItemZBool itemOptionsGameWeaponFastSwitch("FAST WEAPON SWITCH:", 3, 66, 100, 180, 0, SetWeaponFastSwitch, NULL, NULL);
+CGameMenuItemZBool itemOptionsGameWeaponSwitchList("WEAPON SWITCH LIST:", 3, 66, 110, 180, 0, SetWeaponSwitchList, "SIDE", "OFF");
 CGameMenuItemZCycle itemOptionsGameAutosaveMode("AUTOSAVE TRIGGER:", 3, 66, 120, 180, 0, SetAutosaveMode, pzAutosaveModeStrings, ARRAY_SSIZE(pzAutosaveModeStrings), 0);
 CGameMenuItemZBool itemOptionsGameLockSaving("LOCK MANUAL SAVING:", 3, 66, 130, 180, 0, SetLockSaving, "AUTOSAVES ONLY", "NEVER");
 CGameMenuItemZBool itemOptionsGameRestoreLastSave("ASK TO RESTORE LAST SAVE:", 3, 66, 140, 180, 0, SetRestoreLastSave, NULL, NULL);
@@ -2076,6 +2079,7 @@ void SetupOptionsMenu(void)
     menuOptionsGame.Add(&itemOptionsGameBoolAutoRun, false);
     menuOptionsGame.Add(&itemOptionsGameWeaponSwitch, false);
     menuOptionsGame.Add(&itemOptionsGameWeaponFastSwitch, false);
+    menuOptionsGame.Add(&itemOptionsGameWeaponSwitchList, false);
     menuOptionsGame.Add(&itemOptionsGameAutosaveMode, false);
     menuOptionsGame.Add(&itemOptionsGameLockSaving, false);
     menuOptionsGame.Add(&itemOptionsGameRestoreLastSave, false);
@@ -2090,6 +2094,8 @@ void SetupOptionsMenu(void)
     itemOptionsGameAutosaveMode.tooltip_pzTextUpper = "Set when autosave will trigger";
     itemOptionsGameLockSaving.tooltip_pzTextUpper = "Disable manual saving/save scumming";
     itemOptionsGameRestoreLastSave.tooltip_pzTextUpper = "Prompt to restore last save game on death";
+    itemOptionsGameWeaponSwitchList.tooltip_pzTextUpper = "Show your weapons on the side of the screen";
+    itemOptionsGameWeaponSwitchList.tooltip_pzTextLower = "for a moment when you switch (like Fresh Supply)";
     itemOptionsGameBoolVanillaMode.tooltip_pzTextUpper = "Disable all non-vanilla features/mutators";
     itemOptionsGameBoolVanillaMode.tooltip_pzTextLower = "and restores bugs (v1.21 DOS compatibility mode)";
 
@@ -2154,6 +2160,7 @@ void SetupOptionsMenu(void)
     itemOptionsGameAutosaveMode.m_nFocus = gAutosave % ARRAY_SSIZE(pzAutosaveModeStrings);
     itemOptionsGameLockSaving.at20 = !!gLockManualSaving;
     itemOptionsGameRestoreLastSave.at20 = !!gRestoreLastSave;
+    itemOptionsGameWeaponSwitchList.at20 = !!gWeaponSwitchList;
     itemOptionsGameBoolVanillaMode.m_nFocus = gVanilla % ARRAY_SSIZE(pzVanillaModeStrings);
     SetGameVanillaMode(gVanilla); // enable/disable menu items depending on current vanilla mode state
 
@@ -3305,6 +3312,11 @@ void SetRestoreLastSave(CGameMenuItemZBool *pItem)
     gRestoreLastSave = pItem->at20;
 }
 
+void SetWeaponSwitchList(CGameMenuItemZBool *pItem)
+{
+    gWeaponSwitchList = pItem->at20;
+}
+
 void SetGameVanillaMode(char nState)
 {
     gVanilla = nState % ARRAY_SSIZE(pzVanillaModeStrings);
@@ -3630,6 +3642,7 @@ void SetFirstLaunchOptions(CGameMenuItemChain *pItem)
     itemOptionsGameWeaponSwitch.m_nFocus = gWeaponSwitch;
     itemOptionsGameAutosaveMode.m_nFocus = gAutosave;
     itemOptionsGameRestoreLastSave.at20 = gRestoreLastSave;
+    itemOptionsGameWeaponSwitchList.at20 = !!gWeaponSwitchList;
     itemOptionsDisplayPowerupDuration.at20 = gPowerupDuration;
     itemOptionsDisplayBoolPowerupStyle.at20 = gPowerupStyle;
     itemOptionsDisplayBoolPowerupStyle.bEnable = !!gPowerupDuration;

@@ -12023,8 +12023,9 @@ int32_t videoSetGameMode(char davidoption, int32_t daupscaledxdim, int32_t daups
 #ifdef USE_OPENGL
     if (nogl) dabpp = 8;
 #endif
-#if defined EDUKE32_IOS && defined USE_OPENGL
-    // on iOS the GL drawable always fills the screen; render at exactly its size
+#if defined EDUKE32_IOS && defined USE_OPENGL && !defined NOTBLOOD_WEB
+    // on iOS the GL drawable always fills the screen; render at exactly its size (the web canvas
+    // takes the size asked for instead, see ios_setrenderscale)
     if (!nogl)
         ios_getrendersize(&daupscaledxdim, &daupscaledydim);
 #endif

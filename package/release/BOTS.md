@@ -83,7 +83,7 @@ MULTIPLAYER match settings (or MATCH SETTINGS in the bots menu) > GAME > **MODE*
 
 - **Bloodbath**: normal, *gun game* (every kill moves you on to the next of 10 weapons; a pitchfork kill with the last one wins), *king of the hill* (a point a second for holding the flag-marked area alone; it moves every 90 seconds), *juggernaut* (whoever kills the juggernaut becomes it: 200 health, armor, double guns; only kills by or of the juggernaut score), *last man standing* (LIVES EACH; the last one with lives left wins)
 - **Teams**: team bloodbath, capture the flag (the bots carry, return and defend flags), king of the hill, last team standing
-- **Co-op**: normal, *survival* (waves of monsters that get bigger and nastier, ammo between waves, shared lives (0: endless), your best wave per map is kept)
+- **Co-op**: normal, *survival* (waves of monsters that get bigger and nastier, ammo between waves, shared lives (0: endless), your best wave per map is kept). **WAVES**: VERY EASY, EASY, NORMAL (as before) or HARD: how many monsters come, how soon the strong ones do, how long the breaks are and how much ammo you get; the easy ones also hand out health (and armor on VERY EASY) every wave. Maps made for survival can mark where monsters come in with dude spawn markers that nothing triggers.
 
 SET MUTATORS > **MORE MUTATORS**: low or moon gravity, vampire (hits heal you), one-hit kills, and weapon sets (a random weapon at every spawn, or one weapon only).
 

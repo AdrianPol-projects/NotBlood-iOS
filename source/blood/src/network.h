@@ -77,6 +77,7 @@ struct PKT_STARTGAME {
     short version;
     char gameType, difficulty, monsterSettings, weaponSettings, itemSettings, respawnSettings, keySettings, itemWeaponSettings, randomizerMode;
     char episodeId, levelId;
+    char nChosenWaves; // NotBlood Chosen 1.2: survival waves (chosenmodes.h); sits in padding, so the packet keeps its size and older 1.2 hosts send 0 (normal)
     unsigned int uNetGameFlags;
     char userMap, userMapName[BMAX_PATH];
     char monsterQuantity, monsterHealth, monsterSpeed;

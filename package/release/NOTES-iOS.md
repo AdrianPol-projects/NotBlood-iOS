@@ -34,7 +34,7 @@ Optional, in the same folder:
 - **Match types:**
   - Bloodbath: gun game, king of the hill, juggernaut, last man standing.
   - Teams: team bloodbath, capture the flag, king of the hill, last team standing (SET TEAMS for any mix of players and bots).
-  - Co-op: survival waves.
+  - Co-op: survival waves, from VERY EASY (smaller waves, longer breaks, more ammo, health every wave) to HARD.
   - Mutators: low or moon gravity, vampire, one-hit kills, weapon sets.
 - **Multiplayer with every platform:** the iPad plays together with the Windows, Linux, macOS and Android builds of the same version.
   - LAN: FIND LAN GAMES.

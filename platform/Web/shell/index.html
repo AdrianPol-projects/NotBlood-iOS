@@ -13,15 +13,16 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=__BUILD__">
 </head>
 <body>
 <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<input id="kbd" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-hidden="true" tabindex="-1">
 
 <main id="launcher">
   <header>
     <h1>NotBlood <span>Chosen</span></h1>
-    <p class="sub">Blood in your browser &middot; version __VERSION__</p>
+    <p class="sub">Blood in your browser &middot; version __VERSION__ <small>(build __BUILD__)</small></p>
   </header>
 
   <section id="loading" class="card">
@@ -81,7 +82,7 @@
   </section>
 </main>
 
-<script src="app.js"></script>
-<script src="notblood.js" async onload="notbloodLoaded()"></script>
+<script src="app.js?v=__BUILD__"></script>
+<script src="notblood.js?v=__BUILD__" async onload="notbloodLoaded()"></script>
 </body>
 </html>

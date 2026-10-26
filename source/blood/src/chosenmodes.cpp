@@ -171,6 +171,7 @@ void modesSetFromPacket(void)
     gChosenRules.nWeapons = gPacketStartGame.nChosenWeapons;
     gChosenRules.bVampire = gPacketStartGame.bChosenVampire;
     gChosenRules.bOneHit = gPacketStartGame.bChosenOneHit;
+    gChosenRules.nWaves = (uint8_t)gPacketStartGame.nChosenWaves < kChosenWavesMax ? gPacketStartGame.nChosenWaves : kChosenWavesNormal;
     for (int i = 0; i < kMaxPlayers; i++)
         gChosenRules.nTeam[i] = gGameOptions.nGameType == kGameTypeTeams ? ClipRange(gPacketStartGame.nChosenTeam[i], 0, 2) : 0;
     // modes that don't fit the game type count as normal
@@ -422,7 +423,49 @@ static const short nWaveMonsters[][4] = {
     { kDudeBeast, kDudeGargoyleStone, kDudeCerberusTwoHead, kDudeCultistTesla },             // 11+
 };
 
-// where monsters come in: where players start and where items lie (places everybody can get to)
+// the WAVES setting: how many come, how soon the nastier ones do, how long the breaks are, what the players get
+struct WAVESETTINGS
+{
+    int nBase, nHalvesPerWave, nMax;  // monsters in wave n: nBase + n * nHalvesPerWave / 2, at most nMax
+    int nWavesPerTier, nMixChance;    // a stronger tier every so many waves; percent from the tier above
+    int nBreak;                       // seconds between waves
+    int nAmmo;                        // percent of the normal ammo handed out
+    int nHealth, nArmor;              // given every wave, up to 100
+};
+
+static const WAVESETTINGS waveSettings[kChosenWavesMax] = {
+    { 3, 4, 40, 2, 20,  8, 100,  0,  0 }, // normal: as it always was
+    { 3, 3, 30, 3, 15, 15, 150, 25,  0 }, // easy
+    { 2, 2, 20, 4, 10, 20, 200, 50, 50 }, // very easy
+    { 5, 5, 50, 2, 35,  5, 100,  0,  0 }, // hard
+};
+
+static const WAVESETTINGS *Waves(void)
+{
+    return &waveSettings[gChosenRules.nWaves < kChosenWavesMax ? gChosenRules.nWaves : kChosenWavesNormal];
+}
+
+// a map made for survival marks where monsters come in with dude spawn markers nothing triggers
+static short nSpawnSpots[64];
+static int nSpawnSpotCount;
+
+static void FindSpawnSpots(void)
+{
+    nSpawnSpotCount = 0;
+    for (int i = 0; i < kMaxSprites && nSpawnSpotCount < ARRAY_SSIZE(nSpawnSpots); i++)
+    {
+        spritetype *pSprite = &sprite[i];
+        if (pSprite->statnum >= kMaxStatus || pSprite->type != kMarkerDudeSpawn || pSprite->sectnum < 0)
+            continue;
+        if (pSprite->extra > 0 && (xsprite[pSprite->extra].rxID || xsprite[pSprite->extra].txID))
+            continue; // the map's own spawner
+        nSpawnSpots[nSpawnSpotCount++] = i;
+    }
+    if (nSpawnSpotCount)
+        LOG_F(INFO, "Survival: %d monster spawn spots in this map", nSpawnSpotCount);
+}
+
+// where monsters come in: the map's spawn spots, or else where players start and where items lie (places everybody can get to)
 static bool SpawnPoint(int *px, int *py, int *pz, int *pSector)
 {
     int nItems = 0;
@@ -431,8 +474,13 @@ static bool SpawnPoint(int *px, int *py, int *pz, int *pSector)
     for (int nTry = 0; nTry < 40; nTry++)
     {
         int x, y, s;
-        const int nPick = Random(kMaxPlayers + nItems);
-        if (nPick < kMaxPlayers)
+        const int nPick = nSpawnSpotCount ? 0 : Random(kMaxPlayers + nItems);
+        if (nSpawnSpotCount)
+        {
+            const spritetype *pSpot = &sprite[nSpawnSpots[Random(nSpawnSpotCount)]];
+            x = pSpot->x, y = pSpot->y, s = pSpot->sectnum;
+        }
+        else if (nPick < kMaxPlayers)
             x = gStartZone[nPick].x, y = gStartZone[nPick].y, s = gStartZone[nPick].sectnum;
         else
         {
@@ -460,7 +508,7 @@ static bool SpawnPoint(int *px, int *py, int *pz, int *pSector)
             nNearest = min(nNearest, nDist);
             bBad = nDist < 2000 || (nTry < 25 && nDist < 8000 && cansee(x, y, z - (40<<8), s, pPlayerSprite->x, pPlayerSprite->y, pPlayerSprite->z - (40<<8), pPlayerSprite->sectnum));
         }
-        if (bBad || (nTry < 30 && nNearest > 7000))
+        if (bBad || (nTry < 30 && nNearest > 7000 && !nSpawnSpotCount))
             continue;
         *px = x, *py = y, *pz = z, *pSector = s;
         return true;
@@ -521,6 +569,7 @@ static void HurryStragglers(bool bRemove)
 
 static void StartWave(void)
 {
+    const WAVESETTINGS *pWaves = Waves();
     nSurvivalWave++;
     nWaveStart = gLevelTime;
     // ammo for everybody still standing, more the further it goes
@@ -529,17 +578,21 @@ static void StartWave(void)
         PLAYER *pPlayer = &gPlayer[p];
         if (!pPlayer->pXSprite || pPlayer->pXSprite->health <= 0)
             continue;
-        GiveWeapon(pPlayer, kWeaponShotgun, 20);
-        GiveWeapon(pPlayer, kWeaponTommy, 20);
+        GiveWeapon(pPlayer, kWeaponShotgun, 20 * pWaves->nAmmo / 100);
+        GiveWeapon(pPlayer, kWeaponTommy, 20 * pWaves->nAmmo / 100);
         if (nSurvivalWave >= 3)
-            GiveWeapon(pPlayer, kWeaponNapalm, 15);
+            GiveWeapon(pPlayer, kWeaponNapalm, 15 * pWaves->nAmmo / 100);
         if (nSurvivalWave >= 5)
-            GiveWeapon(pPlayer, kWeaponTesla, 15);
+            GiveWeapon(pPlayer, kWeaponTesla, 15 * pWaves->nAmmo / 100);
         if (nSurvivalWave >= 7)
-            GiveWeapon(pPlayer, kWeaponLifeLeech, 15);
+            GiveWeapon(pPlayer, kWeaponLifeLeech, 15 * pWaves->nAmmo / 100);
+        if (pWaves->nHealth && pPlayer->pXSprite->health < (100 << 4))
+            pPlayer->pXSprite->health = ClipHigh(pPlayer->pXSprite->health + (pWaves->nHealth << 4), 100 << 4);
+        if (pWaves->nArmor && pPlayer->armor[1] < (100 << 4))
+            pPlayer->armor[1] = ClipHigh(pPlayer->armor[1] + (pWaves->nArmor << 4), 100 << 4);
     }
-    const int nTier = ClipHigh((nSurvivalWave - 1) / 2, ARRAY_SSIZE(nWaveMonsters) - 1);
-    const int nCount = ClipHigh(3 + nSurvivalWave * 2, 40);
+    const int nTier = ClipHigh((nSurvivalWave - 1) / pWaves->nWavesPerTier, ARRAY_SSIZE(nWaveMonsters) - 1);
+    const int nCount = ClipHigh(pWaves->nBase + nSurvivalWave * pWaves->nHalvesPerWave / 2, pWaves->nMax);
     for (int i = 0; i < nCount; i++)
     {
         int x, y, z, nSector;
@@ -547,7 +600,7 @@ static void StartWave(void)
             break;
         // stronger ones mix in from the tier above as the waves go on
         int nRow = nTier;
-        if (nRow + 1 < ARRAY_SSIZE(nWaveMonsters) && Random(100) < 20)
+        if (nRow + 1 < ARRAY_SSIZE(nWaveMonsters) && Random(100) < pWaves->nMixChance)
             nRow++;
         const int nType = nWaveMonsters[nRow][Random(4)];
         spritetype *pSpawner = actSpawnSprite(nSector, x, y, z, kStatDecoration, true);
@@ -649,6 +702,8 @@ void modesStartLevel(void)
     if (gChosenRules.nMode == kChosenModeSurvival)
     {
         LoadSurvivalBest();
+        FindSpawnSpots();
+        LOG_F(INFO, "Survival: waves setting %d", gChosenRules.nWaves);
         // with the match's monsters set to none the game never got monsters ready to take damage
         for (int i = 0; i < kDudeMax - kDudeBase; i++)
             for (int j = 0; j < kDamageMax; j++)
@@ -674,9 +729,9 @@ void modesPlayerSpawned(PLAYER *pPlayer)
     else if (gChosenRules.nMode == kChosenModeSurvival)
     {
         // a horde needs guns
-        GiveWeapon(pPlayer, kWeaponFlare, 30);
-        GiveWeapon(pPlayer, kWeaponShotgun, 40);
-        GiveWeapon(pPlayer, kWeaponTommy, 40);
+        GiveWeapon(pPlayer, kWeaponFlare, 30 * Waves()->nAmmo / 100);
+        GiveWeapon(pPlayer, kWeaponShotgun, 40 * Waves()->nAmmo / 100);
+        GiveWeapon(pPlayer, kWeaponTommy, 40 * Waves()->nAmmo / 100);
         pPlayer->input.newWeapon = kWeaponShotgun;
     }
     if (gChosenRules.nMode == kChosenModeJuggernaut && nJuggernaut == pPlayer->nPlayer)
@@ -887,7 +942,7 @@ void modesFrame(void)
         }
         else if (!nAlive)
         {
-            nSurvivalBreakUntil = gLevelTime + kTicsPerSec * 8; // a breather between waves
+            nSurvivalBreakUntil = gLevelTime + kTicsPerSec * Waves()->nBreak; // a breather between waves
             SaveSurvivalBest(nSurvivalWave);
         }
         // everybody down and no lives left: over

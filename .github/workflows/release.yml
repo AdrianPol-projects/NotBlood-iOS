@@ -85,7 +85,7 @@ jobs:
   build-macos:
     name: macOS (Apple Silicon + Intel)
     if: github.repository == 'AdrianPol-projects/NotBlood-Chosen' && (github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'macos')
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:

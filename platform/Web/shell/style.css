@@ -96,3 +96,10 @@ button:disabled { opacity: .5; cursor: default; }
 progress { width: 100%; height: 10px; accent-color: var(--red); }
 
 details summary { cursor: pointer; color: var(--dim); margin-top: 6px; }
+
+/* the text field the phone keyboard types into (app.js): there, but not seen; 16px so iOS doesn't zoom */
+#kbd {
+  position: fixed; left: 0; top: 0; width: 1px; height: 1px; padding: 0; border: 0;
+  opacity: 0; font-size: 16px; color: transparent; background: transparent; caret-color: transparent;
+  pointer-events: none; z-index: -1;
+}

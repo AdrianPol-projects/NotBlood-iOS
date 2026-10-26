@@ -997,7 +997,13 @@ void polymost_initdrawpoly(void)
     if (!persistentStreamBuffer)
     {
         if (r_streamclientarrays == -1)
+#ifdef NOTBLOOD_WEB
+            // gl4es keeps buffers in memory and WebGL gets them as client arrays: a draw at an
+            // offset into the streaming VBO re-sends the whole buffer up to it, every draw
+            clientArrayStream = true;
+#else
             clientArrayStream = glinfo.vendor && !Bstrcmp(glinfo.vendor, "Apple");
+#endif
         else
             clientArrayStream = !!r_streamclientarrays;
     }

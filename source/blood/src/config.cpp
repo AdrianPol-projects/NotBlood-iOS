@@ -393,7 +393,11 @@ void CONFIG_SetDefaults(void)
 #elif defined EDUKE32_IOS
     // default to the panel's native resolution; lower presets are in Options > Video
     int32_t pixw, pixh;
+#ifdef NOTBLOOD_WEB
+    ios_scaledsize(web_defaultscale(), &pixw, &pixh);
+#else
     ios_getscreensize(&pixw, &pixh, NULL, NULL);
+#endif
     gSetup.xdim = pixw;
     gSetup.ydim = pixh;
 #else

@@ -122,7 +122,7 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 | Teams: king of the hill | Your team scores while only your side holds the hill |
 | Teams: last team standing | Limited lives, and the last team with someone left wins |
 | Co-op: normal | The episodes together, against the monsters |
-| Co-op: survival | Growing waves of monsters, shared lives, your best wave is kept |
+| Co-op: survival | Growing waves of monsters, shared lives, your best wave is kept; WAVES from VERY EASY to HARD |
 
 Every mode works with only people, only bots, or both. The README in the download explains every menu in more detail, and `README - Bots.txt` covers the bots.
 

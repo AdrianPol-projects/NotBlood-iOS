@@ -638,6 +638,10 @@ CGameMenuItemZCycle itemNetGameCycleMirrorModeOverride("MIRROR MODE:", 3, 66, 16
 void SetNetChosenMode(CGameMenuItemZCycle *pItem);
 CGameMenuItemZCycle itemNetGameChosenMode("MODE:", 3, 66, 43, 180, 0, SetNetChosenMode, NULL, 0, 0);
 CGameMenuItemSlider itemNetGameChosenLives("LIVES EACH:", 3, 66, 52, 180, 3, 1, 20, 1, NULL, -1, -1, kMenuSliderValue);
+// survival's waves, easiest first (menu order to kChosenWaves*)
+static const char *pzChosenWavesStrings[] = { "VERY EASY", "EASY", "NORMAL", "HARD" };
+static const int nChosenWavesFromMenu[] = { kChosenWavesVeryEasy, kChosenWavesEasy, kChosenWavesNormal, kChosenWavesHard };
+CGameMenuItemZCycle itemNetGameChosenWaves("WAVES:", 3, 66, 70, 180, 0, NULL, pzChosenWavesStrings, ARRAY_SSIZE(pzChosenWavesStrings), 2);
 CGameMenuItemSlider itemNetGameChosenPool("SHARED LIVES (0 ENDLESS):", 3, 66, 61, 180, 0, 0, 50, 1, NULL, -1, -1, kMenuSliderValue);
 static char zNetStartGameText[48];
 
@@ -1713,6 +1717,7 @@ void SetupNetStartMenu(void)
     menuNetworkGameMode.Add(&itemNetGameMode, true);
     menuNetworkGameMode.Add(&itemNetGameChosenMode, false);
     menuNetworkGameMode.Add(&itemNetGameChosenLives, false);
+    menuNetworkGameMode.Add(&itemNetGameChosenWaves, false);
     menuNetworkGameMode.Add(&itemNetGameChosenPool, false);
     menuNetworkGameMode.Add(&itemNetGameSliderScoreLimit, false);
     menuNetworkGameMode.Add(&itemNetGameSliderTimeLimit, false);
@@ -1741,6 +1746,8 @@ void SetupNetStartMenu(void)
     itemNetStartBots.pPreDrawCallback = UpdateNetStartBots;
     itemNetGameChosenLives.tooltip_pzTextUpper = "Lives everybody has in last man standing";
     itemNetGameChosenPool.tooltip_pzTextUpper = "Lives the whole team shares in survival";
+    itemNetGameChosenWaves.tooltip_pzTextUpper = "How many monsters, how soon the strong ones,";
+    itemNetGameChosenWaves.tooltip_pzTextLower = "breaks, ammo; easy ones give health too";
     menuNetworkGameMode.Add(&itemBloodQAV, false);
     itemNetGameSliderScoreLimit.tooltip_pzTextUpper = "Set score limit";
     itemNetGameSliderScoreLimit.tooltip_pzTextLower = "(0 = no limit)";
@@ -4001,6 +4008,8 @@ void SetNetChosenMode(CGameMenuItemZCycle *pItem)
     itemNetGameChosenLives.bNoDraw = !itemNetGameChosenLives.bEnable;
     itemNetGameChosenPool.bEnable = nMode == kChosenModeSurvival;
     itemNetGameChosenPool.bNoDraw = !itemNetGameChosenPool.bEnable;
+    itemNetGameChosenWaves.bEnable = nMode == kChosenModeSurvival;
+    itemNetGameChosenWaves.bNoDraw = !itemNetGameChosenWaves.bEnable;
     if ((itemNetGameMode.m_nFocus+1) != kGameTypeCoop) // last man standing: lives instead of a score limit
     {
         itemNetGameSliderScoreLimit.bEnable = nMode != kChosenModeLastManStanding && nMode != kChosenModeGunGame;
@@ -5173,15 +5182,18 @@ void BotMatchSetMode(int nGameType, int nMode)
         if (pnModes[i] == nMode)
             itemNetGameChosenMode.SetTextIndex(i);
     SetNetChosenMode(&itemNetGameChosenMode);
-    if (const char *pzMutators = getenv("NOTBLOOD_TEST_MUTATORS")) // testing: gravity,vampire,onehit,weapons
+    if (const char *pzMutators = getenv("NOTBLOOD_TEST_MUTATORS")) // testing: gravity,vampire,onehit,weapons,waves
     {
-        int g = 0, v = 0, o = 0, w = 0;
-        sscanf(pzMutators, "%d,%d,%d,%d", &g, &v, &o, &w);
+        int g = 0, v = 0, o = 0, w = 0, n = 2;
+        sscanf(pzMutators, "%d,%d,%d,%d,%d", &g, &v, &o, &w, &n);
         itemChosenMutatorGravity.SetTextIndex(g);
         itemChosenMutatorVampire.at20 = v;
         itemChosenMutatorOneHit.at20 = o;
         itemChosenMutatorWeapons.SetTextIndex(w);
+        itemNetGameChosenWaves.SetTextIndex(n);
     }
+    if (const char *pzMap = getenv("NOTBLOOD_TEST_USERMAP")) // testing: a match on a map file
+        Bstrncpyz(zUserMapName, pzMap, sizeof(zUserMapName));
 }
 
 void BotMatchSetLives(int nLives)
@@ -5311,6 +5323,7 @@ void StartNetGame(CGameMenuItemChain *pItem)
     gPacketStartGame.nChosenWeapons = itemChosenMutatorWeapons.m_nFocus < 2 ? itemChosenMutatorWeapons.m_nFocus : kChosenWeaponsOnlyBase + itemChosenMutatorWeapons.m_nFocus - 2;
     gPacketStartGame.bChosenVampire = itemChosenMutatorVampire.at20;
     gPacketStartGame.bChosenOneHit = itemChosenMutatorOneHit.at20;
+    gPacketStartGame.nChosenWaves = gPacketStartGame.nChosenMode == kChosenModeSurvival ? nChosenWavesFromMenu[ClipRange(itemNetGameChosenWaves.m_nFocus, 0, ARRAY_SSIZE(nChosenWavesFromMenu)-1)] : kChosenWavesNormal;
     ////
     Bstrncpy(gPacketStartGame.userMapName, zUserMapName, sizeof(zUserMapName));
     gPacketStartGame.userMap = gPacketStartGame.userMapName[0] != '\0';

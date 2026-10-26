@@ -378,10 +378,15 @@ int currentGameMode(void)
 
 void toggleKeyboard(void)
 {
+#ifdef NOTBLOOD_WEB
+    // a browser only shows its keyboard for a text field focused during the tap itself: the page
+    // does it (it knows where the button is, web_keyboardbutton) and beginFrame follows it
+#else
     if (SDL_IsTextInputActive())
         SDL_StopTextInput();
     else
         SDL_StartTextInput();
+#endif
 }
 
 //
@@ -980,6 +985,10 @@ void renderGame(void)
             continue;
         bool const pressed = b.held || (b.kind == BK_WEAPONS && g_weaponPickerOpen);
         drawRoundButton(b.label, itemPX(b.x), itemPY(b.y), buttonRadiusPx(b), pressed, alpha);
+#ifdef NOTBLOOD_WEB
+        if (b.kind == BK_KEYBOARD)
+            web_keyboardbutton(itemPX(b.x), itemPY(b.y), buttonRadiusPx(b) * 1.15f, g_outW, g_outH);
+#endif
     }
 
     if (g_weaponPickerOpen)
@@ -1125,10 +1134,18 @@ void renderMenu(void)
 
     for (auto const &m : g_menuButtons)
     {
+#ifdef NOTBLOOD_WEB
+        if (m.action == MA_KEYBOARD && web_keyboardopen())  // the page's keyboard is what shows
+#else
         if (m.action == MA_KEYBOARD && SDL_IsTextInputActive())
+#endif
             drawRoundButton(m.label, itemPX(m.x), itemPY(m.y), m.r * unitPx(), true, alpha);
         else
             drawRoundButton(m.label, itemPX(m.x), itemPY(m.y), m.r * unitPx(), m.held, alpha);
+#ifdef NOTBLOOD_WEB
+        if (m.action == MA_KEYBOARD)
+            web_keyboardbutton(itemPX(m.x), itemPY(m.y), m.r * unitPx() * 1.15f, g_outW, g_outH);
+#endif
     }
 }
 
@@ -1850,12 +1867,34 @@ void beginFrame(void)
     if (typing && !typingKeyboard && !SDL_IsTextInputActive())
         SDL_StartTextInput();
     else if (!typing && typingKeyboard && SDL_IsTextInputActive())
+    {
         SDL_StopTextInput();
+#ifdef NOTBLOOD_WEB
+        web_keyboardclose();
+#endif
+    }
     typingKeyboard = typing;
+#ifdef NOTBLOOD_WEB
+    web_keyboardframe();
+    // the page's keyboard opened or closed (the KEYB button, or the browser hid it)
+    static bool webKeyboard;
+    bool const open = web_keyboardopen();
+    if (open != webKeyboard)
+    {
+        if (open)
+            SDL_StartTextInput();
+        else if (!typing)
+            SDL_StopTextInput();
+        webKeyboard = open;
+    }
+#endif
 }
 
 void renderOverlay(void)
 {
+#ifdef NOTBLOOD_WEB
+    web_keyboardbutton(0.f, 0.f, 0.f, g_outW, g_outH);  // none, unless renderGame or renderMenu draws it
+#endif
     switch (g_mode)
     {
         case TM_GAME:     renderGame(); break;

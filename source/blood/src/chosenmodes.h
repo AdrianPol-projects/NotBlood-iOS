@@ -41,6 +41,15 @@ enum {
     kChosenWeaponsOnlyBase, // + weapon number (flare 2 ... voodoo 10): only that weapon
 };
 
+// how hard survival's waves are: 0 is how they always were, so a host that doesn't send it gets that
+enum {
+    kChosenWavesNormal = 0,
+    kChosenWavesEasy,
+    kChosenWavesVeryEasy,
+    kChosenWavesHard,
+    kChosenWavesMax
+};
+
 struct CHOSENRULES
 {
     uint8_t nMode;
@@ -50,6 +59,7 @@ struct CHOSENRULES
     uint8_t bVampire;
     uint8_t bOneHit;
     uint8_t nTeam[8];  // teams picked in the menu (0: as before, 1 blue, 2 red), by player number
+    uint8_t nWaves;    // survival: kChosenWaves*
 };
 
 extern CHOSENRULES gChosenRules;

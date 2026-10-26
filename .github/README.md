@@ -22,7 +22,7 @@ The game files are not included. Copy your own Blood files (*One Unit Whole Bloo
 - **Match types and mutators:**
   - Bloodbath: gun game, king of the hill, juggernaut, last man standing.
   - Teams: team bloodbath, capture the flag, king of the hill, last team standing.
-  - Co-op: survival waves.
+  - Co-op: survival waves, from VERY EASY (smaller waves, longer breaks, more ammo, health every wave) to HARD.
   - Mutators: gravity, vampire, one-hit kills, weapon sets.
 - **Multiplayer across platforms:** the iPad plays together with Windows, Linux, macOS and Android:
   - LAN game finder

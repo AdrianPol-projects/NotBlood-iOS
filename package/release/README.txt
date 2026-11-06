@@ -1,7 +1,7 @@
 NotBlood Chosen
 ===============
 
-Version 1.2. NotBlood (a Blood source port) with bots, new match types, co-op saves,
+Version 1.3. NotBlood (a Blood source port) with bots, new match types, co-op saves,
 online lobbies, a live game dashboard, a MODS menu and a LAN game finder. Every player in a
 network game needs the same version - PC, Mac, iPad and Android builds of one version play
 together. The bots are explained in detail in "README - Bots.txt".
@@ -14,7 +14,7 @@ SETUP
    TILES000.ART to TILES017.ART (from One Unit Whole Blood: CD, GOG or Steam).
 2. Start the game:
    Windows:  notblood.exe
-   Linux:    ./notblood   (needs SDL2: sudo apt install libsdl2-2.0-0)
+   Linux:    ./notblood   (x86_64 or arm64 download; nothing else to install)
    macOS:    see "macOS" below
 
 
@@ -58,11 +58,18 @@ BOTS
 GAME MODES
 
   GAME SETTINGS > GAME (bloodbath, teams or co-op), then MODE right underneath:
-    Bloodbath   normal, gun game, king of the hill, juggernaut, last man standing
+    Bloodbath   normal, gun game, king of the hill, juggernaut, last man standing,
+                hide and seek (hiders look like objects and only have the pitchfork,
+                seekers start blindfolded for 30 seconds, found hiders become seekers)
     Teams       team bloodbath, capture the flag, king of the hill, last team standing
     Co-op       normal, survival (waves of monsters)
   LIVES EACH is for last man/team standing and survival. SET MUTATORS > MORE MUTATORS:
-  low or moon gravity, vampire, one-hit kills, random weapon or one weapon only.
+  low or moon gravity, vampire, one-hit kills, random weapon or one weapon only,
+  player size (tiny or big), TNT barrels everywhere, akimbo everything (the pitchfork
+  stabs twice as hard and its charged alt attack throws a fireball).
+  MATCH RULES (next to SET MUTATORS): ROUNDS 1-9, VOTE FOR THE NEXT MAP, and ONLY THE
+  HOST STARTS GAMES (host only: the others can't start a game or use ESC > NEW GAME).
+  The juggernaut is twice as big, red, deals 1.5x damage, and the HUD shows how far away.
   Teams: SET TEAMS puts every player and bot on AUTO, BLUE or RED; uneven teams are fine -
   give the weaker side the stronger bot (SET EACH BOT).
   Every mode works with people, bots or both. ESC > MATCH STATS shows the scores.

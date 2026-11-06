@@ -30,6 +30,18 @@
     <progress id="loadBar" max="100" value="0"></progress>
   </section>
 
+  <section id="lastCrash" class="card" hidden>
+    <h2>Last time NotBlood stopped</h2>
+    <p id="crashText"></p>
+    <details>
+      <summary>The end of its log</summary>
+      <pre id="crashLog" class="small"></pre>
+    </details>
+    <div class="row">
+      <button id="crashCopy">Copy the report</button>
+      <button id="crashHide">OK</button>
+    </div>
+  </section>
   <section id="ready" class="card" hidden>
     <button id="play" class="big">Play</button>
     <p id="filesInfo" class="small"></p>
@@ -72,8 +84,9 @@
   </section>
 
   <section class="card small">
-    <p><b>Online play:</b> MULTIPLAYER &gt; ONLINE. Leave SERVER empty to use the server this page comes
-      from and enter its key. LAN games aren't possible in a browser.</p>
+    <p><b>Online play:</b> MULTIPLAYER &gt; ONLINE. SERVER starts as the server this page comes from:
+      enter its key. NET STATS there shows your ping and frame rate in the game. LAN games aren't
+      possible in a browser.</p>
     <p><b>Controls:</b> keyboard and mouse (click the game to capture the mouse), a game controller, or the
       touch controls on tablets and phones.</p>
     <p>NotBlood Chosen is free software (GPL 2), based on <a href="https://github.com/clipmove/NotBlood">NotBlood</a>.

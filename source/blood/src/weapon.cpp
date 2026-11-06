@@ -52,6 +52,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "nnexts.h"
 #endif
 #include "view.h"
+#include "chosenmodes.h"
 
 #define kQAVEndVanilla  125
 #define kQAVCanDown2Fix 125 // custom qav for spray can unequip animation fix
@@ -383,7 +384,7 @@ void UpdateAimVector(PLAYER * pPlayer)
     WEAPONTRACK *pWeaponTrack = &gWeaponTrack[pPlayer->curWeapon];
     int nTarget = -1;
     pPlayer->aimTargetsCount = 0;
-    const char bPitchforkFireBallReady = (pPlayer->curWeapon == kWeaponPitchfork) && (pPlayer->weaponState == 4) && (pPlayer->throwPower == 65536) && gGameOptions.bQuadDamagePowerup && WeaponsNotBlood() && !VanillaMode(); // never autoaim when ready to shoot fireball
+    const char bPitchforkFireBallReady = (pPlayer->curWeapon == kWeaponPitchfork) && (pPlayer->weaponState == 4) && (pPlayer->throwPower == 65536) && (gGameOptions.bQuadDamagePowerup || modesAkimboPitchfork(pPlayer)) && WeaponsNotBlood() && !VanillaMode(); // never autoaim when ready to shoot fireball
     const char bAutoAimWeapon = pPlayer->curWeapon == kWeaponVoodoo || pPlayer->curWeapon == kWeaponLifeLeech || (gProfile[pPlayer->nPlayer].nAutoAim == 4 && pPlayer->curWeapon == kWeaponPitchfork && !bPitchforkFireBallReady); // always autoaim for these weapons
     char bAutoAim = (gProfile[pPlayer->nPlayer].nAutoAim == 1) || (gProfile[pPlayer->nPlayer].nAutoAim == 2 && !pWeaponTrack->bIsProjectile && !bPitchforkFireBallReady);
     char bOnlyTargetRatsEels = (gProfile[pPlayer->nPlayer].nAutoAim == 3) && !pWeaponTrack->bIsProjectile && (pPlayer->curWeapon != kWeaponVoodoo) && (pPlayer->curWeapon != kWeaponLifeLeech);
@@ -1132,7 +1133,7 @@ void FirePitchfork(int nTrigger, PLAYER *pPlayer)
                     sfxPlay3DSound(pPlayer->pSprite, 455, 1, 0);
             }
         }
-        if (gGameOptions.bQuadDamagePowerup) // if quad damage is active
+        if (gGameOptions.bQuadDamagePowerup || modesAkimboPitchfork(pPlayer)) // if quad damage is active (or the akimbo everything mutator)
         {
             if (WeaponsNotBlood() && (pPlayer->weaponState == 4) && (pPlayer->throwPower == 65536)) // if missile attack ready (maxed out power)
             {
@@ -1143,7 +1144,7 @@ void FirePitchfork(int nTrigger, PLAYER *pPlayer)
             }
             if (powerupCheck(pPlayer, kPwUpTwoGuns))
             {
-                n *= 4;
+                n *= gGameOptions.bQuadDamagePowerup ? 4 : 2; // akimbo everything: two pitchforks' worth
             }
         }
     }

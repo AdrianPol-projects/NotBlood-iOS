@@ -55,6 +55,7 @@ static void OnlineJoinByName(CGameMenuItemChain *);
 static void OnlineJoinListed(CGameMenuItemChain *);
 static void SetupOnlineLobbies(CGameMenuItemChain *);
 static void UpdateOnlineStatus(CGameMenuItem *);
+static void SetOnlineNetStats(CGameMenuItemZBool *);
 
 static char zOnlineStatus[64];
 static char zOnlineDashboard[80];
@@ -67,7 +68,8 @@ CGameMenuItemSlider itemOnlinePlayers("PLAYERS:", 3, 46, 72, 228, 2, 2, kMaxPlay
 CGameMenuItemChain itemOnlineHost("HOST A LOBBY", 3, 0, 90, 320, 1, NULL, -1, OnlineHost, 0);
 CGameMenuItemChain itemOnlineFind("FIND LOBBIES", 3, 0, 102, 320, 1, &menuOnlineLobbies, -1, SetupOnlineLobbies, 0);
 CGameMenuItemChain itemOnlineJoin("JOIN LOBBY BY NAME", 3, 0, 114, 320, 1, NULL, -1, OnlineJoinByName, 0);
-CGameMenuItemZBool itemOnlineLanStats("SHOW MY LAN GAMES ON THE DASHBOARD:", 3, 46, 132, 228, false, NULL, NULL, NULL);
+CGameMenuItemZBool itemOnlineNetStats("NET STATS:", 3, 46, 126, 228, false, SetOnlineNetStats, NULL, NULL);
+CGameMenuItemZBool itemOnlineLanStats("SHOW MY LAN GAMES ON THE DASHBOARD:", 3, 46, 136, 228, false, NULL, NULL, NULL);
 CGameMenuItemText itemOnlineStatus(zOnlineStatus, 3, 160, 150, 1);
 CGameMenuItemText itemOnlineDashboard(zOnlineDashboard, 3, 160, 165, 1);
 
@@ -99,9 +101,20 @@ static void SetOnlineStatus(const char *pzText)
     Bstrupr(zOnlineStatus);
 }
 
+static void SetOnlineNetStats(CGameMenuItemZBool *pItem)
+{
+    gNetStats = pItem->at20;
+}
+
 static void UpdateOnlineStatus(CGameMenuItem *pItem)
 {
     UNREFERENCED_PARAMETER(pItem);
+    itemOnlineNetStats.at20 = gNetStats;
+#ifdef NOTBLOOD_WEB
+    // empty means the server this page came from: show which one (and keep it in the settings)
+    if (!gOnlineServer[0] && !itemOnlineServer.at30)
+        relayPageServer(gOnlineServer, sizeof(gOnlineServer));
+#endif
     gOnlineReportLan = itemOnlineLanStats.at20;
     if (gOnlineServer[0])
         Bsnprintf(zOnlineDashboard, sizeof(zOnlineDashboard), "LIVE STATS: %s IN A WEB BROWSER", gOnlineServer);
@@ -453,6 +466,63 @@ static void ModChosen(CGameMenuItemChain *pItem)
         modRestart(pMod->szName);
     else
         viewSetMessage("Could not save the mod choice");
+}
+
+// ---- THE MAP VOTE, WAITING FOR THE HOST -------------------------------------------------------
+
+CGameMenu menuMapVote;
+CGameMenu menuWaitHost;
+extern CGameMenu menuNetStart;
+
+static void MapVoteChosen(CGameMenuItemChain *pItem)
+{
+    modesVote(pItem->at30);
+    gGameMenuMgr.Deactivate();
+}
+
+static char zMapVote[kChosenVoteChoices][64];
+static char zMapVoteInfo[48];
+static void UpdateMapVote(CGameMenuItem *pItem)
+{
+    UNREFERENCED_PARAMETER(pItem);
+    for (int c = 0; c < kChosenVoteChoices; c++)
+        Bstrncpyz(zMapVote[c], modesVoteText(c), sizeof(zMapVote[c]));
+    if (!modesVoting())
+        Bstrncpyz(zMapVoteInfo, "THE VOTE IS OVER", sizeof(zMapVoteInfo));
+    else if (modesMyVote() >= 0)
+        Bsnprintf(zMapVoteInfo, sizeof(zMapVoteInfo), "YOU VOTED FOR %d", modesMyVote() + 1);
+    else
+        Bstrncpyz(zMapVoteInfo, "PICK THE NEXT MAP", sizeof(zMapVoteInfo));
+}
+
+CGameMenuItemTitle itemMapVoteTitle("NEXT MAP", 1, 160, 20, 2038);
+CGameMenuItemChain itemMapVote0(zMapVote[0], 3, 0, 60, 320, 1, NULL, -1, MapVoteChosen, 0);
+CGameMenuItemChain itemMapVote1(zMapVote[1], 3, 0, 75, 320, 1, NULL, -1, MapVoteChosen, 1);
+CGameMenuItemChain itemMapVote2(zMapVote[2], 3, 0, 90, 320, 1, NULL, -1, MapVoteChosen, 2);
+CGameMenuItemText itemMapVoteInfo(zMapVoteInfo, 3, 160, 115, 1);
+
+CGameMenuItemTitle itemWaitHostTitle("MULTIPLAYER", 1, 160, 20, 2038);
+CGameMenuItemText itemWaitHost1("WAITING FOR THE HOST", 1, 160, 80, 1);
+CGameMenuItemText itemWaitHost2("ONLY THE HOST STARTS GAMES", 3, 160, 105, 1);
+
+void menuOpenMapVote(void)
+{
+    UpdateMapVote(NULL);
+    gGameMenuMgr.Push(&menuMapVote, modesMyVote() >= 0 ? modesMyVote() + 1 : 1);
+}
+
+void menuCloseMapVote(void)
+{
+    if (gGameMenuMgr.m_bActive && (gGameMenuMgr.pActiveMenu == &menuMapVote || gGameMenuMgr.pActiveMenu == &menuWaitHost))
+        gGameMenuMgr.Deactivate();
+}
+
+void menuLeaveNetStart(void)
+{
+    if (myconnectindex == connecthead || !gGameMenuMgr.m_bActive || gGameMenuMgr.pActiveMenu != &menuNetStart)
+        return;
+    gGameMenuMgr.Pop();
+    gGameMenuMgr.Push(&menuWaitHost, -1);
 }
 
 // ---- MATCH STATS, BOT ORDERS (the game's menu during a match) ------------------------------
@@ -1115,6 +1185,19 @@ void SetupChosenMenus(void)
     menuCoopSave.Add(&itemCoopSaveHelp, false);
     menuCoopSave.Add(&itemBloodQAV, false);
 
+    menuMapVote.Add(&itemMapVoteTitle, false);
+    menuMapVote.Add(&itemMapVote0, true);
+    menuMapVote.Add(&itemMapVote1, false);
+    menuMapVote.Add(&itemMapVote2, false);
+    menuMapVote.Add(&itemMapVoteInfo, false);
+    menuMapVote.Add(&itemBloodQAV, false);
+    itemMapVoteTitle.pPreDrawCallback = UpdateMapVote;
+
+    menuWaitHost.Add(&itemWaitHostTitle, false);
+    menuWaitHost.Add(&itemWaitHost1, false);
+    menuWaitHost.Add(&itemWaitHost2, false);
+    menuWaitHost.Add(&itemBloodQAV, false);
+
     menuOnline.Add(&itemOnlineTitle, false);
     menuOnline.Add(&itemOnlineServer, false);
     menuOnline.Add(&itemOnlineKey, false);
@@ -1123,6 +1206,7 @@ void SetupChosenMenus(void)
     menuOnline.Add(&itemOnlineHost, true);
     menuOnline.Add(&itemOnlineFind, false);
     menuOnline.Add(&itemOnlineJoin, false);
+    menuOnline.Add(&itemOnlineNetStats, false);
 #ifndef NOTBLOOD_WEB // no LAN games in a browser
     menuOnline.Add(&itemOnlineLanStats, false);
 #endif
@@ -1133,6 +1217,7 @@ void SetupChosenMenus(void)
     itemOnlineServer.tooltip_pzTextUpper = "Address of the online server";
     itemOnlineKey.tooltip_pzTextUpper = "The secret key of the server";
     itemOnlineLobby.tooltip_pzTextUpper = "Name of the lobby to host or join";
+    itemOnlineNetStats.tooltip_pzTextUpper = "Ping, input buffer and frame rate during the game";
 
     menuOnlineLobbies.Add(&itemOnlineLobbiesTitle, false);
     for (int i = 0; i < kMaxListedLobbies; i++)

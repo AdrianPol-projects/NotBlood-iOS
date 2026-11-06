@@ -1,4 +1,4 @@
-# Blood for iPad and iPhone: NotBlood Chosen 1.2
+# Blood for iPad and iPhone: NotBlood Chosen 1.3
 
 **NotBlood Chosen** runs Blood (Monolith, 1997) on **iPad and iPhone**. It is based on the [NotBlood](https://github.com/clipmove/NotBlood) source port and adds touch controls, controller and keyboard/mouse support, bots, new match types, co-op saves, and LAN and online multiplayer with PC, Mac and Android players.
 
@@ -46,7 +46,7 @@ Optional, in the same folder:
 ## Tips
 
 - **Local Network permission:** iOS asks for it the first time you host or join. Allow it, or later go to Settings → Privacy & Security → Local Network → NotBlood.
-- **Same version for everyone:** every player in a network game needs NotBlood Chosen **1.2**.
+- **Same version for everyone:** every player in a network game needs NotBlood Chosen **1.3**.
 - **If OpenGL crashes at startup**, the next launch switches to the classic renderer and creates `DISABLE_OPENGL.txt`. Delete that file to try OpenGL again.
 - **The Magic Keyboard has no Esc key:** use the on-screen MENU button.
 

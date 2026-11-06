@@ -186,8 +186,10 @@ int SDLDrv_PCM_Init(int *mixrate, int *numchannels, void * initdata)
 #endif
 #ifdef NOTBLOOD_WEB
     // the browser asks for sound on the page's main thread, between the game's frames: a buffer of
-    // 512 ran dry on phones (crackling, a modem-like noise); about 85 ms on touch devices, 43 ms otherwise
-    chunksize = web_hastouch() ? 4096 : 2048;
+    // 512 ran dry on phones (crackling, a modem-like noise); about 85 ms on touch devices with few
+    // cores, 43 ms otherwise (an iPad with an M chip draws a frame in a few ms: the longer buffer only
+    // made every sound late)
+    chunksize = web_hastouch() && !web_manycores() ? 4096 : 2048;
 #endif
 
     SDL_AudioSpec spec = {};

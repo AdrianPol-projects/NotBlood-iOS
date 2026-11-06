@@ -1,4 +1,4 @@
-# NotBlood Chosen 1.2
+# NotBlood Chosen 1.3
 
 **NotBlood Chosen** is [NotBlood](https://github.com/clipmove/NotBlood) (the Blood source port) with computer players (bots), new match types, co-op saves, internet play without port forwarding, a live game dashboard, a MODS menu and a LAN game finder. It runs on **Windows, Linux, macOS, Android and iPad/iPhone**, and all of them play together.
 
@@ -8,25 +8,26 @@ You need your own Blood files (One Unit Whole Blood: CD, GOG or Steam). The game
 
 | File | For |
 | --- | --- |
-| `NotBlood-Chosen-1.2-win64.zip` | Windows 10/11 (64-bit) |
-| `NotBlood-Chosen-1.2-linux-x64.zip` | Linux x86_64 (needs SDL2) |
-| `NotBlood-Chosen-1.2-macos.zip` | macOS 11 or newer, Apple Silicon and Intel |
-| `NotBlood-Chosen-1.2-android.apk` | Android 5 or newer (phones, tablets, Chromebooks) |
-| `NotBlood-Chosen-1.2-ios.ipa` | iPad/iPhone with iOS 15 or newer (unsigned: sideload it with Signulous, Sideloadly or AltStore) |
-| `NotBlood-Chosen-1.2-web.zip` | the web version; every NotBlood server installs it by itself and serves it at `/play/` ([SERVER.md](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/SERVER.md)) |
+| `NotBlood-Chosen-1.3-win64.zip` | Windows 10/11 (64-bit) |
+| `NotBlood-Chosen-1.3-linux-x64.zip` | Linux on PCs (x86_64): any distribution from about 2022 on (Ubuntu 22.04, Mint 21, Debian 12, Fedora 36, Arch, SteamOS or newer), nothing to install |
+| `NotBlood-Chosen-1.3-linux-arm64.zip` | Linux on ARM (arm64/aarch64): Raspberry Pi 4/5 with a 64-bit system, ARM laptops and handhelds, same distributions |
+| `NotBlood-Chosen-1.3-macos.zip` | macOS 11 or newer, Apple Silicon and Intel |
+| `NotBlood-Chosen-1.3-android.apk` | Android 5 or newer (phones, tablets, Chromebooks) |
+| `NotBlood-Chosen-1.3-ios.ipa` | iPad/iPhone with iOS 15 or newer (unsigned: sideload it with Signulous, Sideloadly or AltStore) |
+| `NotBlood-Chosen-1.3-web.zip` | the web version; every NotBlood server installs it by itself and serves it at `/play/` ([SERVER.md](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/SERVER.md)) |
 
 **No install at all:** if you or a friend runs a NotBlood server, open its address followed by `/play/` in Safari, Chrome, Edge or Firefox. Pick your Blood files once, add it to the home screen and it works offline, with everything below except LAN games ([more](https://github.com/AdrianPol-projects/NotBlood-Chosen/blob/main/platform/Web/README.md)).
 
 The iPad/iPhone IPA is the same build that's in [NotBlood-iOS](https://github.com/AdrianPol-projects/NotBlood-iOS/releases/latest), which has iOS install notes.
 
-Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game, and 1.2 can't join theirs.
+Everybody in a network game needs **1.3**. Older versions can't join a 1.3 game, and 1.3 can't join theirs.
 
 ## Setup
 
 **Windows / Linux**
 1. Unzip into a folder of its own, for example `NotBlood`.
 2. Copy your Blood files next to the game: `BLOOD.INI`, `BLOOD.RFF`, `GUI.RFF`, `SOUNDS.RFF`, `SURFACE.DAT`, `TABLES.DAT`, `VOXEL.DAT` and `TILES000.ART` to `TILES017.ART`.
-3. Start `notblood.exe` (Windows) or `./notblood` (Linux; if SDL2 is missing: `sudo apt install libsdl2-2.0-0`).
+3. Start `notblood.exe` (Windows) or `./notblood` (Linux; nothing else to install, it works under X11 and Wayland).
 
 **macOS**
 1. Unzip and put the `NotBlood` folder anywhere in your home folder, for example in Documents. You don't need an administrator.
@@ -37,7 +38,7 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 **Android**
 1. Install the APK and start it once. Allow it "access to all files".
 2. Copy your Blood files into the `NotBlood` folder of the main storage (next to `Download`) and start the game again.
-3. 1.2 installs over NotBlood Chosen 1.0 and over the bots test builds, and keeps your files and settings.
+3. 1.3 installs over NotBlood Chosen 1.0, 1.2 and over the bots test builds, and keeps your files and settings.
 
 **iPad / iPhone**
 1. Sign and install the IPA with Signulous, Sideloadly or AltStore, and start it once.
@@ -61,11 +62,12 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 - **BOT ORDERS** (ESC): follow me, hold this spot, go ahead. These are for the bots on your side in co-op and teams.
 
 **Match types and mutators**
-- Bloodbath: normal, gun game, king of the hill, juggernaut, last man standing.
+- Bloodbath: normal, gun game, king of the hill, juggernaut, last man standing, hide and seek (new in 1.3).
 - Teams (new in 1.2: all four modes): team bloodbath, capture the flag, king of the hill, last team standing.
 - Co-op: normal, survival (waves of monsters).
 - **SET TEAMS** (new in 1.2): put every player and bot on AUTO, BLUE or RED. Uneven teams are allowed.
-- Mutators: low or moon gravity, vampire, one-hit kills, random or single weapon.
+- Mutators: low or moon gravity, vampire, one-hit kills, random or single weapon; new in 1.3: tiny or big players, TNT barrels everywhere, akimbo everything.
+- MATCH RULES (new in 1.3): rounds, a vote for the next map, and ONLY THE HOST STARTS GAMES.
 - MATCH STATS: frags, deaths, aim, best streak, favourite weapon, nemesis.
 
 **Co-op saves**
@@ -85,12 +87,21 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 - A macOS app (Apple Silicon and Intel) that needs no administrator. Android keeps everything in the `NotBlood` folder.
 - Settings are saved whenever a menu closes. On Android there is a crash report in `notblood.log`.
 
+## New in 1.3
+- **Hide and seek** (Bloodbath > MODE): hiders look like a barrel, vase or crate from the map and only have the pitchfork; the seekers are blindfolded for the first 30 seconds. A found hider becomes a seeker. Hiders make a noise every 30 seconds.
+- **Juggernaut** stands out: twice as big (bigger hitbox, stomps small players), glows red, deals 1.5x damage, and everybody sees how far away the juggernaut is.
+- New mutators in MORE MUTATORS: **player size** (tiny or big), **TNT barrels everywhere** (some or lots), **akimbo everything** (dual weapons all the time; the pitchfork stabs twice as hard and its charged alt attack throws a fireball).
+- **MATCH RULES** next to SET MUTATORS: **rounds** (1-9; the next round starts by itself, round wins are shown and the most wins takes the match), **vote for the next map** (the same map or two random ones, bots vote too), and **only the host starts games** (host only: the others can't start a game from the setup or from ESC > NEW GAME).
+- All new options are off by default. 1.3 can't play with 1.2.
+
 ## New in 1.2 compared to 1.0
 - Bots, the match types, mutators and match stats (all of these were only in the bots test builds before).
 - Bots in LAN and online games, SET EACH BOT and SET TEAMS.
 - Team bloodbath without flags, and last team standing.
 - MODE now sits right under GAME in GAME SETTINGS.
 - No default online server.
+- NET STATS in MULTIPLAYER > ONLINE: ping, input buffer and frame rate during online and LAN games (`net_stats`).
+- In a browser: a delirium shroom no longer stops the game, the SERVER field shows the page's own server and is kept, sound is less delayed on fast tablets, and the next start shows why the game stopped last time.
 - Android: the black sky, explosions turning the world black, settings not being kept and slow drawing are fixed.
 - macOS: faster drawing on Apple GPUs.
 
@@ -115,8 +126,9 @@ Everybody in a network game needs **1.2**. Older versions can't join a 1.2 game,
 | Bloodbath: normal | Everyone for themselves, most frags wins |
 | Bloodbath: gun game | Every kill gives you the next of 10 weapons. A pitchfork kill with the last one wins |
 | Bloodbath: king of the hill | Score while you're alone in the flag-marked area. It moves every 90 seconds |
-| Bloodbath: juggernaut | Kill the juggernaut to become it (200 health, armor, double guns) |
+| Bloodbath: juggernaut | Kill the juggernaut to become it (twice as big, red, 200 health, armor, double guns, 1.5x damage) |
 | Bloodbath: last man standing | Limited lives, and the last one alive wins |
+| Bloodbath: hide and seek | Hiders disguised as objects, seekers find them; found hiders join the seekers |
 | Teams: team bloodbath | Blue against red, frags only |
 | Teams: capture the flag | Bring the enemy flag to your base |
 | Teams: king of the hill | Your team scores while only your side holds the hill |

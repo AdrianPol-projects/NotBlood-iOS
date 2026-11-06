@@ -339,7 +339,7 @@ static bool IsEnemyPlayer(PLAYER *pMe, PLAYER *pOther)
         return false;
     if (gGameOptions.nGameType == kGameTypeTeams && pMe->teamId == pOther->teamId)
         return false;
-    return true;
+    return modesIsEnemy(pMe, pOther); // hide and seek: seekers after hiders they can spot
 }
 
 static PLAYER *SpritePlayer(int nSprite)
@@ -4092,6 +4092,14 @@ static int osdcmd_bot_match(osdcmdptr_t parm)
     return OSDCMD_OK;
 }
 
+static int osdcmd_bot_rules(osdcmdptr_t parm) // the next bot_match's newer mutators and match rules
+{
+    if (parm->numparms < 5)
+        return OSDCMD_SHOWHELP;
+    BotMatchSetRules(Batol(parm->parms[0]), Batol(parm->parms[1]), Batol(parm->parms[2]), Batol(parm->parms[3]), Batol(parm->parms[4]));
+    return OSDCMD_OK;
+}
+
 static int osdcmd_bot_sector(osdcmdptr_t parm) // map debugging: how bots see a sector's openings
 {
     if (parm->numparms < 1)
@@ -4134,7 +4142,8 @@ void botRegisterCvars(void)
 {
     OSD_RegisterFunction("bot_order", "bot_order <follow|hold|free>: orders for the bots on your side", osdcmd_bot_order);
     OSD_RegisterFunction("bot_sector", "bot_sector <sector>: writes how bots see that sector's openings to the log", osdcmd_bot_sector);
-    OSD_RegisterFunction("bot_match", "bot_match [frag limit] [time limit] [episode] [level] [game type 1-3] [mode 0-5]: starts a bot match with the BOTS menu's settings", osdcmd_bot_match);
+    OSD_RegisterFunction("bot_match", "bot_match [frag limit] [time limit] [episode] [level] [game type 1-3] [mode 0-7]: starts a bot match with the BOTS menu's settings", osdcmd_bot_match);
+    OSD_RegisterFunction("bot_rules", "bot_rules <size 0-2> <barrels 0-2> <akimbo 0-1> <rounds 1-9> <vote 0-1>: player size, TNT barrels, akimbo everything, rounds and the map vote of the next bot_match", osdcmd_bot_rules);
     static osdcvardata_t cvars[] = {
         { "bot_count", "number of bots in a bot match", (void *)&gBotCount, CVAR_INT, 1, kMaxPlayers - 1 },
         { "bot_net_count", "number of bots the host adds to a network game (MULTIPLAYER > BOTS)", (void *)&gBotNetCount, CVAR_INT, 0, kMaxPlayers - 1 },

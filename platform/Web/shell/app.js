@@ -104,6 +104,63 @@ function haveGameData() {
     return game.FS.readdir(GAME_DIR).some(function (n) { return n.toLowerCase() === 'blood.rff'; });
 }
 
+// ---- what happened last time ------------------------------------------------------------------------
+// An error inside the game is kept here (localStorage) and shown on the next start with the end of
+// the game's log, which is still the crashed one until Play is pressed again. A page that was
+// reloaded while playing (Safari does that when it runs short of memory) is noticed through
+// sessionStorage, which a reload keeps.
+
+var CRASH_KEY = 'notbloodCrash', PLAYING_KEY = 'notbloodPlaying';
+
+function storageGet(store, key) {
+    try { return window[store].getItem(key); } catch (e) { return null; }
+}
+
+function storageSet(store, key, value) {
+    try {
+        if (value === null) window[store].removeItem(key);
+        else window[store].setItem(key, value);
+    } catch (e) { /* private browsing, storage off */ }
+}
+
+function logTail(lines) {
+    try {
+        var text = game.FS.readFile(GAME_DIR + '/notblood.log', { encoding: 'utf8' });
+        return text.split('\n').slice(-lines).join('\n');
+    } catch (e) { return ''; }
+}
+
+function recordCrash(text) {
+    storageSet('localStorage', CRASH_KEY, JSON.stringify({ text: text, time: new Date().toISOString(), build: '__BUILD__' }));
+    storageSet('sessionStorage', PLAYING_KEY, null);
+}
+
+function showCrash() {
+    var crash = null;
+    try { crash = JSON.parse(storageGet('localStorage', CRASH_KEY) || 'null'); } catch (e) { /* old or broken entry */ }
+    if (!crash && storageGet('sessionStorage', PLAYING_KEY))
+        crash = { text: 'The page reloaded while the game was running. Safari does that when it runs short of memory or its own part for the page crashed.', time: '', build: '__BUILD__' };
+    storageSet('sessionStorage', PLAYING_KEY, null);
+    if (!crash) return;
+    var when = crash.time ? new Date(crash.time).toLocaleString() + ', ' : '';
+    $('crashText').textContent = crash.text + ' (' + when + 'build ' + crash.build + ')';
+    $('crashLog').textContent = logTail(40);
+    $('lastCrash').hidden = false;
+}
+
+$('crashHide').onclick = function () {
+    storageSet('localStorage', CRASH_KEY, null);
+    $('lastCrash').hidden = true;
+};
+
+$('crashCopy').onclick = function () {
+    var report = $('crashText').textContent + '\n\n' + navigator.userAgent + '\n\n' + $('crashLog').textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText)
+        navigator.clipboard.writeText(report).then(function () { $('crashCopy').textContent = 'Copied'; }, function () { $('crashLog').parentNode.open = true; });
+    else
+        $('crashLog').parentNode.open = true;
+};
+
 function refresh() {
     $('loading').hidden = true;
     var files = listFiles(GAME_DIR, '', []);
@@ -325,11 +382,23 @@ function notbloodLoaded() {
             if (m) setLoad('Loading the game... ' + Math.round(m[1] / 1048576) + ' / ' + Math.round(m[2] / 1048576) + ' MB', 100 * m[1] / m[2]);
         },
         notbloodSync: requestSync,
-        onExit: function () { syncFiles(function () { location.reload(); }); },
+        onExit: function () {
+            storageSet('sessionStorage', PLAYING_KEY, null);
+            syncFiles(function () { location.reload(); });
+        },
         onAbort: function (what) {
-            syncFiles();
-            alert('NotBlood stopped because of an error:\n' + what + '\n\nThe page will reload.');
-            location.reload();
+            recordCrash('NotBlood stopped because of an error: ' + what);
+            // settings, saves and the log are written to the browser's storage before the reload
+            // (it used to reload while that was still going on)
+            var reloading = false;
+            function reload() {
+                if (reloading) return;
+                reloading = true;
+                alert('NotBlood stopped because of an error:\n' + what + '\n\nThe page will reload.');
+                location.reload();
+            }
+            syncFiles(reload);
+            setTimeout(reload, 4000);
         }
     }).then(function (mod) {
         game = mod;
@@ -340,6 +409,7 @@ function notbloodLoaded() {
         FS.syncfs(true, function (err) {
             if (err) console.warn('reading files:', err);
             refresh();
+            showCrash();
         });
     }).catch(function (err) {
         setLoad('The game could not start in this browser: ' + err);
@@ -501,6 +571,9 @@ document.addEventListener('touchend', function (e) {
 $('play').onclick = function () {
     if (!game || started || !haveGameData()) return;
     started = true;
+    storageSet('sessionStorage', PLAYING_KEY, '1');
+    storageSet('localStorage', CRASH_KEY, null);
+    $('lastCrash').hidden = true;
     unlockAudio();
     document.body.classList.add('playing');
     var canvas = $('canvas');

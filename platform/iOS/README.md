@@ -6,7 +6,7 @@ The iOS/iPadOS build of NotBlood Chosen, based on [NotBlood](https://github.com/
 
 Every push to the `ios` branch builds an **unsigned** IPA on a GitHub macOS runner:
 
-* **Releases → the latest release** (e.g. `v1.2`) – always the newest build (open this on the iPad to download directly), or
+* **Releases → the latest release** (e.g. `v1.3`) – always the newest build (open this on the iPad to download directly), or
 * **Actions → iOS IPA → latest run → Artifacts**.
 
 Sign and install it with Signulous, Sideloadly, AltStore/SideStore or your own developer account. Unsigned IPAs are what these services expect.
@@ -53,7 +53,7 @@ Bluetooth game controllers (Xbox, PlayStation, MFi) work through SDL as well.
 
 ## Multiplayer, bots and online play
 
-Everything from NotBlood Chosen 1.2 works on the iPad too, and plays together with the Windows, Linux, macOS and Android builds of the same version:
+Everything from NotBlood Chosen 1.3 works on the iPad too, and plays together with the Windows, Linux, macOS and Android builds of the same version:
 
 * **Bots**: MULTIPLAYER → PLAY WITH BOTS (offline, career, watch bots), or BOTS in the MULTIPLAYER setup when you host a LAN or online game.
 * **Match types**: gun game, king of the hill, juggernaut, last man standing, team bloodbath, capture the flag, last team standing, co-op survival, plus mutators.
@@ -63,7 +63,7 @@ Everything from NotBlood Chosen 1.2 works on the iPad too, and plays together wi
 
 Notes:
 
-* Every player needs **the same NotBlood Chosen version** (1.2).
+* Every player needs **the same NotBlood Chosen version** (1.3).
 * The first time you host or join, iOS asks for **Local Network** permission. Allow it. If you denied it, go to Settings → Privacy & Security → Local Network → NotBlood.
 * To type an address, tap the field and use **KEYB**.
 * Everyone needs the same game data (and the same add-ons and mods).

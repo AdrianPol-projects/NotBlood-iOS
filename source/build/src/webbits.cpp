@@ -136,6 +136,10 @@ EM_JS(int, web_hastouch, (), {
     return (navigator.maxTouchPoints || 0) > 0 || ('ontouchstart' in window) ? 1 : 0;
 });
 
+EM_JS(int, web_manycores, (), {
+    return (navigator.hardwareConcurrency || 0) >= 6 ? 1 : 0;
+});
+
 // ---- folders --------------------------------------------------------------------------------
 
 char *ios_getappdir(void)

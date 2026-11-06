@@ -38,6 +38,10 @@ enum
 // starts connecting in the background (closes an earlier connection first)
 void relayConnect(const char *pzServer, const char *pzKey, const char *pzGameVersion);
 void relayClose(void);
+#ifdef __EMSCRIPTEN__
+// the address of the server the web page came from ("host" or "host:port"), empty if unknown
+void relayPageServer(char *pzServer, int nSize);
+#endif
 int relayStatus(void);
 const char *relayError(void);
 

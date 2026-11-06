@@ -59,6 +59,10 @@ extern int gSendCheckTail;
 extern int gCheckTail;
 extern int gInitialNetPlayers;
 extern int gBufferJitter;
+extern int gNetDebug, gNetDebugStalls, gNetDebugFrames;
+void netDebugTick(void);
+extern int gNetStats;
+int netRoundTrip(int *pVariance);
 extern int gPlayerTyping[8];
 extern int gPlayerReady[8];
 extern bool bNoResend;
@@ -109,6 +113,10 @@ struct PKT_STARTGAME {
     // 2 red) and how many of the players are bots (their names and looks come just before, packet 242)
     char nChosenTeam[8];
     char nBots;
+    // NotBlood Chosen 1.3: more mutators, rounds, the map vote, only the host starts games
+    char nChosenSize, nChosenBarrels, bChosenAkimbo;
+    char nChosenRounds, nChosenRound, nChosenRoundWins[8];
+    char bChosenVote, bChosenHostOnly;
 };
 
 extern PKT_STARTGAME gPacketStartGame;
@@ -192,3 +200,5 @@ void netDeinitialize(void);
 void netBroadcastNewGame(void);
 void netSendPacketAll(char *pBuffer, int nSize);
 void netBroadcastBotTalk(int nPlayer, const char *pzText, int nSound);
+void netBroadcastVote(int nPlayer, int nChoice);
+void netBroadcastHostOnly(int nValue);

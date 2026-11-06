@@ -32,6 +32,7 @@ enum {
     kChosenModeLastManStanding,
     kChosenModeSurvival,
     kChosenModeCaptureFlag,  // teams with the flags (plain teams is team bloodbath)
+    kChosenModeHideSeek,     // hiders look like the map's decorations, seekers hunt them
     kChosenModeMax
 };
 
@@ -60,6 +61,14 @@ struct CHOSENRULES
     uint8_t bOneHit;
     uint8_t nTeam[8];  // teams picked in the menu (0: as before, 1 blue, 2 red), by player number
     uint8_t nWaves;    // survival: kChosenWaves*
+    uint8_t nSize;     // player size: 0 normal, 1 tiny, 2 big
+    uint8_t nBarrels;  // TNT barrels everywhere: 0 off, 1 some, 2 lots
+    uint8_t bAkimbo;   // guns akimbo for everybody, all the time (and a stronger pitchfork)
+    uint8_t nRounds;   // rounds in a match (0 or 1: one)
+    uint8_t nRound;    // which round this is (1 ...)
+    uint8_t nRoundWins[8]; // rounds won so far, by player (teams: by team)
+    uint8_t bVote;     // vote for the next map when the match is over
+    uint8_t bHostOnly; // only the host starts new games
 };
 
 extern CHOSENRULES gChosenRules;
@@ -90,3 +99,22 @@ int modesGunLevel(int nPlayer);
 int modesWinner(void);           // who a match type declared the winner (-1 nobody/a team/not over)
 int modesDeaths(int nPlayer);
 int modesBestStreak(int nPlayer);
+bool modesIsEnemy(PLAYER *pMe, PLAYER *pOther); // bots: who to go after (hide and seek)
+bool modesDrawPlayer(tspritetype *pTSprite, PLAYER *pPlayer); // look of a player (true: drawn as something else, no extras)
+bool modesHideName(PLAYER *pPlayer);   // don't show its name when aimed at
+bool modesAkimboPitchfork(PLAYER *pPlayer);
+
+// rounds and the map vote
+#define kChosenVoteChoices 3
+bool modesVoting(void);                // the map vote is on
+const char *modesVoteText(int nChoice);
+void modesVote(int nChoice);           // this player's vote (sent to everybody)
+void modesReceiveVote(int nPlayer, int nChoice);
+int modesMyVote(void);
+
+// only the host starts new games (a network game's host sets it, everybody gets it)
+extern int gNetHostOnly;               // what the host said
+extern int gHostOnlyPref;              // the host's setting (saved)
+bool modesMayStartGame(void);          // this player may start a new game
+void modesSendHostOnly(void);          // host: tell everybody
+void modesReceiveHostOnly(int nValue);

@@ -1,6 +1,6 @@
 # NotBlood Chosen
 
-[NotBlood](https://github.com/clipmove/NotBlood) (a Blood source port) with **bots**, new match types, co-op saves, internet play without port forwarding, a live game dashboard, a MODS menu and a LAN game finder, for **Windows, Linux, macOS, Android and iPad**. Every player in a network game needs the same version; all platforms of one version play together.
+[NotBlood](https://github.com/clipmove/NotBlood) (a Blood source port) with **bots**, new match types, co-op saves, internet play without port forwarding, a live game dashboard, a MODS menu and a LAN game finder, for **Windows, Linux (PC and ARM), macOS, Android and iPad**. Every player in a network game needs the same version; all platforms of one version play together.
 
 **Downloads**
 * Windows, Linux, macOS, Android: [NotBlood-Chosen releases](https://github.com/AdrianPol-projects/NotBlood-Chosen/releases)
@@ -9,9 +9,9 @@
 
 Unzip, copy your Blood files (One Unit Whole Blood: CD, GOG or Steam) next to the game and start it. The README in each download explains the rest.
 
-**What's new compared to NotBlood** (version 1.2, [release notes](package/release/NOTES.md))
+**What's new compared to NotBlood** (version 1.3, [release notes](package/release/NOTES.md))
 * **Bots** that play like people (hide, ambush, flank, take the high ground, ride lifts), 4 difficulties, 6 personalities, fine tuning for all bots and for each one. Offline (PLAY WITH BOTS, CAREER, WATCH BOTS) and in LAN and online games, where the host's PC plays them. Details: [BOTS.md](package/release/BOTS.md).
-* **Match types**: gun game, king of the hill, juggernaut, last man standing; teams: team bloodbath, capture the flag, king of the hill, last team standing; co-op survival, with a **WAVES** setting from very easy (smaller waves, longer breaks, more ammo, health every wave) to hard. **SET TEAMS** for any mix of players and bots, **mutators** (gravity, vampire, one-hit kills, weapon sets) and **match stats**.
+* **Match types**: gun game, king of the hill, juggernaut (twice as big and red), last man standing, hide and seek; teams: team bloodbath, capture the flag, king of the hill, last team standing; co-op survival, with a **WAVES** setting from very easy (smaller waves, longer breaks, more ammo, health every wave) to hard. **SET TEAMS** for any mix of players and bots, **mutators** (gravity, vampire, one-hit kills, weapon sets, tiny or big players, TNT barrels everywhere, akimbo everything), **match rules** (rounds, a vote for the next map, only the host starts games) and **match stats**.
 * **Co-op saves**, 8 slots, saved on every player's machine. Load *where you saved* (positions, keys, enemies) or *restart the level with your gear*. Players get their saves by name, new players start with the pitchfork, missing players leave the level. The game saves itself when a player leaves.
 * **Online lobbies** through your own relay server ([how to set it up: SERVER.md](SERVER.md)): host or find lobbies, protected by a server key, no port forwarding.
 * **Live dashboard** in the browser: lobbies, players' health, armor, weapons, keys, a live level map, an event list, big-screen mode, and you choose what it shows.

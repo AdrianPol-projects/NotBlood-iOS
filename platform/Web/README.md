@@ -21,11 +21,14 @@ What carries over:
 - **Settings and saves:** kept in the browser. **Download settings & saves** makes a backup zip; choosing that zip with **Choose files** restores it.
 - **Online:**
   1. Go to MULTIPLAYER → ONLINE.
-  2. Leave SERVER empty to use the server the page came from, and enter its key.
+  2. SERVER already shows the server the page came from: enter its key.
   3. Choose HOST A LOBBY or FIND LOBBIES.
+
+  **NET STATS** in the same menu shows your ping, the input buffer and the frame rate in the corner during the game.
 
   The lobbies are the same ones the PC, Mac, Android and iPad versions use. Bots work too: the host's browser plays them.
 - **No LAN games:** browsers can't send the UDP packets they need.
+- **If it stops:** the next start shows what happened (the error, or that the browser reloaded the page while you were playing) with the end of the game's log. **Copy the report** puts it on the clipboard to send.
 - **Controls:**
   - **Keyboard and mouse:** click the game to capture the mouse; the default keys are W/A/S/D.
   - **Game controllers.**

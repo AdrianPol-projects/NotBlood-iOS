@@ -67,6 +67,7 @@ h2 { font: 28px/1.1 "Pirata One", serif; color: var(--red-hi); margin: 0 0 8px; 
 .small { font-size: 14px; color: var(--dim); }
 .status { color: var(--text); min-height: 1em; }
 code { color: var(--text); }
+#crashLog { white-space: pre-wrap; word-break: break-all; max-height: 40vh; overflow: auto; margin: 8px 0 0; }
 a { color: var(--red-hi); }
 
 .row { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0; }

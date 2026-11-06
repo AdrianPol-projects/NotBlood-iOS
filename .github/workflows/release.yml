@@ -2,7 +2,7 @@
 name: Release builds
 
 # Ready-to-play builds of NotBlood Chosen (co-op saves, online lobbies, mods menu, ...) for
-# Windows, Linux, macOS, Android and iPad, published to the release "v<CHOSEN_VERSION>" (e.g. v1.2) of
+# Windows, Linux (x86_64 and arm64), macOS, Android and iPad, published to the release "v<CHOSEN_VERSION>" (e.g. v1.2) of
 # AdrianPol-projects/NotBlood-Chosen, marked as the latest release; notes: package/release/NOTES.md.
 # Every machine in a network game needs the same version (CHOSEN_VERSION in source/blood/src/chosen.h).
 # The iPad build comes from ios.yml in AdrianPol-projects/NotBlood-iOS.
@@ -16,9 +16,9 @@ name: Release builds
   workflow_dispatch:
     inputs:
       only:
-        description: 'Platforms to build: all; only macos, android or web (then only that download of the release is replaced); android-test (an APK artifact, nothing published)'
+        description: 'Platforms to build: all; only macos, android or web (then only that download of the release is replaced); android-test (an APK artifact, nothing published); linux-test (the Linux builds as artifacts, nothing published)'
         type: choice
-        options: [all, macos, android, web, android-test]
+        options: [all, macos, android, web, android-test, linux-test]
         default: all
 
 permissions:
@@ -32,29 +32,58 @@ env:
   SDL_VERSION: 2.32.10
 
 jobs:
+  # Linux builds that run on any distribution from about 2022 on: built on Ubuntu 22.04 (glibc 2.35) with SDL2
+  # linked in (it loads X11, Wayland, ALSA, PulseAudio/PipeWire and OpenGL itself when the game starts) and
+  # without the GTK startup window, so nothing but the C library and its basics has to be installed.
   build-linux:
-    name: Linux x86_64
-    if: github.repository == 'AdrianPol-projects/NotBlood-Chosen' && (github.event_name != 'workflow_dispatch' || inputs.only == 'all')
-    runs-on: ubuntu-24.04
+    name: Linux ${{ matrix.arch }}
+    if: github.repository == 'AdrianPol-projects/NotBlood-Chosen' && (github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'linux-test')
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            target: linux-x64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    container: ubuntu:22.04
     steps:
-      - uses: actions/checkout@v4
       - name: Install prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get -y install libsdl2-dev libgtk2.0-dev libasound2-dev
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends build-essential cmake curl ca-certificates git pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxinerama-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+      - uses: actions/checkout@v4
+      - name: Let git read the checkout (the build puts its revision in the game)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Build SDL2 (static)
+        run: |
+          curl -fsSL -o sdl.tar.gz "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-${SDL_VERSION}.tar.gz"
+          tar xf sdl.tar.gz
+          cmake -S "SDL2-${SDL_VERSION}" -B sdlbuild -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_INSTALL_PREFIX="$PWD/sdl"
+          cmake --build sdlbuild -j$(nproc)
+          cmake --install sdlbuild
       - name: Build
         # FLAC and libvpx sonames differ between distributions; Blood needs neither
-        run: make -j$(nproc) blood HAVE_FLAC=0 USE_LIBVPX=0 LTO=0
+        run: make -j$(nproc) blood HAVE_FLAC=0 USE_LIBVPX=0 LTO=0 HAVE_GTK2=0 SDL_STATIC=1 SDLCONFIG="$PWD/sdl/bin/sdl2-config"
       - name: Check dependencies
         run: |
+          # libasound (ALSA, for MIDI music) is part of every desktop Linux
           readelf -d ./notblood | grep NEEDED
-          if readelf -d ./notblood | grep -E 'libFLAC|libvpx'; then
-            echo "binary depends on a library with a distribution specific soname"
+          if readelf -d ./notblood | grep NEEDED | grep -v -E 'lib(c|m|dl|pthread|rt|stdc\+\+|gcc_s|asound)\.so|ld-linux'; then
+            echo "binary depends on a library that may not be installed everywhere"
             exit 1
           fi
+          echo "newest glibc symbol it needs:"
+          objdump -T ./notblood | grep -o 'GLIBC_[0-9.]*' | sort -u -V | tail -1
       - uses: actions/upload-artifact@v4
         with:
-          name: notblood-linux-x64
+          name: notblood-${{ matrix.target }}
           path: ./notblood
           if-no-files-found: error
 
@@ -85,7 +114,7 @@ jobs:
   build-macos:
     name: macOS (Apple Silicon + Intel)
     if: github.repository == 'AdrianPol-projects/NotBlood-Chosen' && (github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'macos')
-    runs-on: macos-15
+    runs-on: macos-latest  # named images get retired (macos-14, then 15 sat in the queue)
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
@@ -266,7 +295,7 @@ jobs:
     name: Publish
     needs: [build-linux, build-windows, build-macos, build-android, build-ios, build-web]
     # skipped jobs (a macOS-, Android- or web-only run) are fine, failed ones are not
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && inputs.only != 'android-test' && (needs.build-macos.result == 'success' || inputs.only == 'android' || inputs.only == 'web') }}
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && inputs.only != 'android-test' && inputs.only != 'linux-test' && (needs.build-macos.result == 'success' || inputs.only == 'android' || inputs.only == 'web') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -279,7 +308,7 @@ jobs:
         run: |
           version=$(sed -n 's/#define CHOSEN_VERSION "\(.*\)"/\1/p' source/blood/src/chosen.h)
           echo "VERSION=$version" >> "$GITHUB_ENV"
-          targets="linux-x64 win64"
+          targets="linux-x64 linux-arm64 win64"
           [ "$ONLY" = all ] || targets=""
           for target in $targets; do
             dir="pkg/$target/NotBlood"

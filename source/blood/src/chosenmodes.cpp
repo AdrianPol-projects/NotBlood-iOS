@@ -34,14 +34,17 @@ See the GNU General Public License for more details.
 #include "view.h"
 #include "warp.h"
 #include "weapon.h"
+#include "bot.h"
 #include "chosenmodes.h"
+#include "menuchosen.h"
+#include "gamemenu.h"
 
 CHOSENRULES gChosenRules;
 
-static const char *pzModeNames[kChosenModeMax] = { "NORMAL", "GUN GAME", "KING OF THE HILL", "JUGGERNAUT", "LAST MAN STANDING", "SURVIVAL", "CAPTURE THE FLAG" };
+static const char *pzModeNames[kChosenModeMax] = { "NORMAL", "GUN GAME", "KING OF THE HILL", "JUGGERNAUT", "LAST MAN STANDING", "SURVIVAL", "CAPTURE THE FLAG", "HIDE AND SEEK" };
 
-static const char *pzBloodbathModes[] = { "NORMAL", "GUN GAME", "KING OF THE HILL", "JUGGERNAUT", "LAST MAN STANDING" };
-static const int nBloodbathModes[] = { kChosenModeNormal, kChosenModeGunGame, kChosenModeKingOfTheHill, kChosenModeJuggernaut, kChosenModeLastManStanding };
+static const char *pzBloodbathModes[] = { "NORMAL", "GUN GAME", "KING OF THE HILL", "JUGGERNAUT", "LAST MAN STANDING", "HIDE AND SEEK" };
+static const int nBloodbathModes[] = { kChosenModeNormal, kChosenModeGunGame, kChosenModeKingOfTheHill, kChosenModeJuggernaut, kChosenModeLastManStanding, kChosenModeHideSeek };
 static const char *pzTeamsModes[] = { "TEAM BLOODBATH", "CAPTURE THE FLAG", "KING OF THE HILL", "LAST TEAM STANDING" };
 static const int nTeamsModes[] = { kChosenModeNormal, kChosenModeCaptureFlag, kChosenModeKingOfTheHill, kChosenModeLastManStanding };
 static const char *pzCoopModes[] = { "NORMAL", "SURVIVAL" };
@@ -91,6 +94,36 @@ static int nSurvivalWave, nSurvivalBreakUntil, nSurvivalKills, nSurvivalLives, n
 static bool bSurvivalOver;
 static bool bMatchOver;
 static int nDeclaredWinner = -1;
+static int nDeclaredTeam = -1;
+
+// hide and seek
+enum { kHider = 0, kSeeker = 1 };
+static int nRole[kMaxPlayers];
+struct DISGUISE
+{
+    bool bOn;
+    short nPicnum;
+    uint8_t nXRepeat, nYRepeat, nPal;
+    int8_t nShade;
+    uint16_t nCstat;
+    short nAng;
+};
+static DISGUISE disguise[kMaxPlayers]; // what a hider looks like (a copy: the thing itself can be blown up)
+static int nHideUntil, nHideEnd, nNextTaunt;
+
+// rounds and the map vote
+static PKT_STARTGAME startPacket;      // the match as the host started it (round 1)
+static int nEndTime = -1;              // gLevelTime the round ended
+static bool bNextSent;
+static bool bVoting, bVoteMenuWanted;
+static int nVoteEnd, nVoteAllAt;
+static int nVoteEpisode[kChosenVoteChoices], nVoteLevel[kChosenVoteChoices];
+static bool bVoteSameUserMap[kChosenVoteChoices];
+static signed char nVotes[kMaxPlayers];
+static char zVoteText[kChosenVoteChoices][64];
+
+int gNetHostOnly = 0;
+int gHostOnlyPref = 0;
 
 // the gun game: every kill moves the killer on to the next weapon, the last is the pitchfork
 static const int nGunWeapons[] = {
@@ -172,6 +205,19 @@ void modesSetFromPacket(void)
     gChosenRules.bVampire = gPacketStartGame.bChosenVampire;
     gChosenRules.bOneHit = gPacketStartGame.bChosenOneHit;
     gChosenRules.nWaves = (uint8_t)gPacketStartGame.nChosenWaves < kChosenWavesMax ? gPacketStartGame.nChosenWaves : kChosenWavesNormal;
+    gChosenRules.nSize = ClipRange(gPacketStartGame.nChosenSize, 0, 2);
+    gChosenRules.nBarrels = ClipRange(gPacketStartGame.nChosenBarrels, 0, 2);
+    gChosenRules.bAkimbo = gPacketStartGame.bChosenAkimbo != 0;
+    gChosenRules.nRounds = gGameOptions.nGameType == kGameTypeCoop ? 1 : ClipRange(gPacketStartGame.nChosenRounds, 1, 9);
+    gChosenRules.nRound = ClipRange(gPacketStartGame.nChosenRound, 1, gChosenRules.nRounds);
+    for (int i = 0; i < kMaxPlayers; i++)
+        gChosenRules.nRoundWins[i] = (uint8_t)gPacketStartGame.nChosenRoundWins[i];
+    gChosenRules.bVote = gPacketStartGame.bChosenVote != 0;
+    gChosenRules.bHostOnly = gPacketStartGame.bChosenHostOnly != 0;
+    gNetHostOnly = gChosenRules.bHostOnly;
+    // the next round starts from the match as it was started (the round's end changes the flags)
+    if (gChosenRules.nRound <= 1)
+        startPacket = gPacketStartGame;
     for (int i = 0; i < kMaxPlayers; i++)
         gChosenRules.nTeam[i] = gGameOptions.nGameType == kGameTypeTeams ? ClipRange(gPacketStartGame.nChosenTeam[i], 0, 2) : 0;
     // modes that don't fit the game type count as normal
@@ -315,6 +361,7 @@ static void MakeJuggernaut(int nPlayer)
         pPlayer->pXSprite->health = 200<<4;
         for (int i = 0; i < 3; i++)
             pPlayer->armor[i] = 200<<4;
+        pPlayer->pXSprite->scale = 512; // twice the size (and twice as easy to hit): everybody sees who it is
     }
     char buffer[80];
     sprintf(buffer, "\r%s\r is the JUGGERNAUT!", gProfile[nPlayer].name);
@@ -338,6 +385,12 @@ static void DeclareWinner(int nPlayer, const char *pzReason)
     gPacketStartGame.uNetGameFlags |= kNetGameFlagNoLevelExit;
     bMatchOver = true;
     nDeclaredWinner = nPlayer;
+}
+
+static void DeclareTeamWinner(int nTeam, const char *pzText)
+{
+    DeclareWinner(-1, pzText);
+    nDeclaredTeam = nTeam;
 }
 
 int modesWinner(void)
@@ -651,6 +704,258 @@ static int CountMonsters(void)
 }
 
 //
+// hide and seek: hiders look like a decoration of the map, seekers (blind at first) hunt them
+//
+
+static int nDisguiseSprites[64], nDisguiseCount;
+
+static void FindDisguises(void)
+{
+    nDisguiseCount = 0;
+    // decorations, and things like barrels, pots and crates
+    static const int nStats[] = { kStatDecoration, kStatThing };
+    for (int s = 0; s < ARRAY_SSIZE(nStats); s++)
+    {
+        for (int i = headspritestat[nStats[s]]; i >= 0 && nDisguiseCount < ARRAY_SSIZE(nDisguiseSprites); i = nextspritestat[i])
+        {
+            spritetype *pSprite = &sprite[i];
+            // standing things of about a person's size: no flat or invisible ones, nothing huge or tiny
+            if ((pSprite->cstat & (CSTAT_SPRITE_ALIGNMENT_MASK | CSTAT_SPRITE_INVISIBLE)) || pSprite->picnum <= 0 || pSprite->xrepeat < 8 || pSprite->yrepeat < 8)
+                continue;
+            // in pixels as the player's picture is (64 high at a size of 64)
+            const int nHeight = tilesiz[pSprite->picnum].y * pSprite->yrepeat / 64, nWidth = tilesiz[pSprite->picnum].x * pSprite->xrepeat / 64;
+            if (nHeight < 16 || nHeight > 96 || nWidth < 8 || nWidth > 96)
+                continue;
+            nDisguiseSprites[nDisguiseCount++] = i;
+        }
+    }
+}
+
+static void PickDisguise(int nPlayer)
+{
+    DISGUISE *pDisguise = &disguise[nPlayer];
+    pDisguise->bOn = nDisguiseCount > 0;
+    if (!pDisguise->bOn)
+        return;
+    const spritetype *pLook = &sprite[nDisguiseSprites[Random(nDisguiseCount)]];
+    pDisguise->nPicnum = pLook->picnum;
+    pDisguise->nXRepeat = pLook->xrepeat, pDisguise->nYRepeat = pLook->yrepeat;
+    pDisguise->nPal = pLook->pal;
+    pDisguise->nShade = pLook->shade;
+    pDisguise->nCstat = pLook->cstat & (CSTAT_SPRITE_XFLIP | CSTAT_SPRITE_YFLIP);
+    pDisguise->nAng = pLook->ang;
+}
+
+static bool IsHiding(int nPlayer)
+{
+    return gChosenRules.nMode == kChosenModeHideSeek && nRole[nPlayer] == kHider;
+}
+
+static int CountRole(int nWhich)
+{
+    int nCount = 0;
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
+        if (nRole[p] == nWhich)
+            nCount++;
+    return nCount;
+}
+
+static void StartHideSeek(void)
+{
+    FindDisguises();
+    int nPlayers = 0, nOrder[kMaxPlayers];
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
+        nOrder[nPlayers++] = p, nRole[p] = kHider;
+    // one seeker for every four players. The game's random numbers start the same every level, so
+    // the pick comes from the match's seed (sent with the start, the same everywhere) and the round
+    uint32_t nSeed = 2166136261u + gChosenRules.nRound * 16777619u;
+    for (int i = 0; i < (int)sizeof(gPacketStartGame.szRandomizerSeed) && gPacketStartGame.szRandomizerSeed[i]; i++)
+        nSeed = (nSeed ^ (uint8_t)gPacketStartGame.szRandomizerSeed[i]) * 16777619u;
+    const int nSeekers = ClipLow((nPlayers + 2) / 4, 1);
+    for (int i = 0; i < nSeekers && nPlayers > 1; i++)
+    {
+        nSeed = nSeed * 1103515245u + 12345u;
+        const int j = i + (int)((nSeed >> 8) % (uint32_t)(nPlayers - i));
+        swap(&nOrder[i], &nOrder[j]);
+        nRole[nOrder[i]] = kSeeker;
+    }
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
+        PickDisguise(p);
+    // a round: 30 seconds to hide, then the time limit (or 3 minutes) to find them
+    nHideUntil = kTicsPerSec * 30;
+    nHideEnd = nHideUntil + (gPlayerRoundTimeLimit ? gPlayerRoundTimeLimit : kTicsPerSec * 60 * 3);
+    nNextTaunt = nHideUntil + kTicsPerSec * 30;
+    // hide and seek ends its own way: the game's own limits just out of reach (0 would count as reached),
+    // the time limit just after its end so the clock on the screen shows about the right time
+    gPlayerRoundScoreLimit = 0x3fffffff;
+    gPlayerRoundTimeLimit = nHideEnd + kTicsPerSec * 2;
+    LOG_F(INFO, "Hide and seek: %d seekers, %d disguises", nSeekers, nDisguiseCount);
+}
+
+static void HideSeekFrame(void)
+{
+    // hiders have nothing but the pitchfork (TNT and the like come with ammo pickups too)
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
+    {
+        PLAYER *pPlayer = &gPlayer[p];
+        if (nRole[p] != kHider || !pPlayer->pXSprite || pPlayer->pXSprite->health <= 0)
+            continue;
+        bool bArmed = false;
+        for (int w = kWeaponFlare; w < kWeaponMax && !bArmed; w++)
+            bArmed = pPlayer->hasWeapon[w] != 0;
+        if (bArmed)
+            GiveOnly(pPlayer, kWeaponPitchfork);
+    }
+    // the seekers wait (blind) while the others hide
+    if (gLevelTime < nHideUntil)
+    {
+        for (int p = connecthead; p >= 0; p = connectpoint2[p])
+        {
+            if (nRole[p] != kSeeker || !gPlayer[p].pSprite)
+                continue;
+            const int nSprite = gPlayer[p].nSprite;
+            xvel[nSprite] = yvel[nSprite] = 0;
+            if (zvel[nSprite] < 0)
+                zvel[nSprite] = 0;
+        }
+        if (gLevelTime == nHideUntil - kTicsPerSec * 10)
+            viewSetMessage("10 seconds to hide!", 8, MESSAGE_PRIORITY_NORMAL);
+        return;
+    }
+    if (gLevelTime == nHideUntil)
+    {
+        viewSetMessage("Ready or not, here they come!", 8, MESSAGE_PRIORITY_NORMAL);
+        sndStartSample("NOTBLOOD3", 64, -1, 11025);
+    }
+    // now and then every hider makes a noise, so they can't just stand still in a corner
+    if (gLevelTime >= nNextTaunt)
+    {
+        nNextTaunt = gLevelTime + kTicsPerSec * 30;
+        for (int p = connecthead; p >= 0; p = connectpoint2[p])
+            if (nRole[p] == kHider && gPlayer[p].pXSprite && gPlayer[p].pXSprite->health > 0)
+                sfxPlay3DSound(gPlayer[p].pSprite, 4400 + Random(10), 2, 0);
+    }
+    const int nHiders = CountRole(kHider);
+    if (!nHiders)
+    {
+        DeclareWinner(-1, "The seekers found everybody!");
+        return;
+    }
+    if (gLevelTime >= nHideEnd)
+    {
+        // the hiders still hidden win, and score for it
+        for (int p = connecthead; p >= 0; p = connectpoint2[p])
+            if (nRole[p] == kHider)
+                gPlayer[p].fragCount += 3;
+        DeclareWinner(-1, nHiders == 1 ? "One hider was never found!" : "The hiders win!");
+    }
+}
+
+// a hider that's found joins the seekers
+static void HiderFound(int nPlayer)
+{
+    if (nRole[nPlayer] != kHider)
+        return;
+    nRole[nPlayer] = kSeeker;
+    char buffer[64];
+    sprintf(buffer, "\r%s\r was found!", gProfile[nPlayer].name);
+    viewSetMessageColor(buffer, 0, MESSAGE_PRIORITY_NORMAL, gColorMsg && !VanillaMode() ? playerColorPalMessage(gPlayer[nPlayer].teamId) : 0);
+}
+
+bool modesIsEnemy(PLAYER *pMe, PLAYER *pOther)
+{
+    if (gChosenRules.nMode != kChosenModeHideSeek)
+        return true;
+    // hiders hide, seekers look for hiders: up close, or one that gives itself away by moving
+    if (nRole[pMe->nPlayer] != kSeeker || nRole[pOther->nPlayer] != kHider || gLevelTime < nHideUntil)
+        return false;
+    spritetype *pMeSprite = pMe->pSprite, *pOtherSprite = pOther->pSprite;
+    if (!pMeSprite || !pOtherSprite)
+        return false;
+    const int nSpeed = approxDist(xvel[pOtherSprite->index], yvel[pOtherSprite->index]);
+    return approxDist(pMeSprite->x - pOtherSprite->x, pMeSprite->y - pOtherSprite->y) < 1800 || nSpeed > 0x8000 || pOther->input.buttonFlags.shoot;
+}
+
+bool modesDrawPlayer(tspritetype *pTSprite, PLAYER *pPlayer)
+{
+    if (gGameOptions.nGameType == kGameTypeSinglePlayer)
+        return false;
+    const int nPlayer = pPlayer->nPlayer;
+    if (IsHiding(nPlayer) && pPlayer->pXSprite && pPlayer->pXSprite->health > 0 && disguise[nPlayer].bOn)
+    {
+        const DISGUISE *pLook = &disguise[nPlayer];
+        pTSprite->picnum = pLook->nPicnum;
+        pTSprite->xrepeat = pLook->nXRepeat;
+        pTSprite->yrepeat = pLook->nYRepeat;
+        pTSprite->pal = pLook->nPal;
+        pTSprite->shade = pLook->nShade;
+        pTSprite->cstat = (pTSprite->cstat & ~(CSTAT_SPRITE_XFLIP | CSTAT_SPRITE_YFLIP | CSTAT_SPRITE_TRANSLUCENT | CSTAT_SPRITE_TRANSLUCENT_INVERT)) | pLook->nCstat;
+        pTSprite->ang = pLook->nAng;
+        if (pPlayer == gView && gViewPos != VIEWPOS_0)
+            pTSprite->cstat |= CSTAT_SPRITE_TRANSLUCENT; // seen from behind: see through it
+        return true;
+    }
+    if (modesJuggernaut() == nPlayer && pPlayer->pXSprite && pPlayer->pXSprite->health > 0)
+    {
+        // red, glowing and big: the juggernaut stands out from far away
+        pTSprite->pal = kFlagRedPal;
+        pTSprite->shade = (int8_t)ClipRange(-24 + mulscale30(Sin(((int)totalclock * 16) & kAngMask), 24), -63, 0);
+    }
+    return false;
+}
+
+bool modesHideName(PLAYER *pPlayer)
+{
+    return IsHiding(pPlayer->nPlayer) && gView && gView->nPlayer != pPlayer->nPlayer;
+}
+
+bool modesAkimboPitchfork(PLAYER *pPlayer)
+{
+    return gChosenRules.bAkimbo && gGameOptions.nGameType != kGameTypeSinglePlayer && powerupCheck(pPlayer, kPwUpTwoGuns);
+}
+
+//
+// TNT barrels everywhere: around the items, where everybody goes
+//
+
+static void PlaceBarrels(void)
+{
+    const int nWant = gChosenRules.nBarrels == 2 ? 40 : 16;
+    int nItems = 0;
+    for (int i = headspritestat[kStatItem]; i >= 0; i = nextspritestat[i])
+        nItems++;
+    if (!nItems)
+        return;
+    int nPlaced = 0;
+    for (int nTry = 0; nTry < nWant * 4 && nPlaced < nWant; nTry++)
+    {
+        int i = headspritestat[kStatItem];
+        for (int n = Random(nItems); n > 0 && i >= 0; n--)
+            i = nextspritestat[i];
+        if (i < 0)
+            continue;
+        // a little way off the item, in the open
+        const int nAng = Random(2048), nDist = 256 + Random(512);
+        const int x = sprite[i].x + mulscale30(Cos(nAng), nDist), y = sprite[i].y + mulscale30(Sin(nAng), nDist);
+        int16_t nSector = sprite[i].sectnum;
+        updatesector(x, y, &nSector);
+        if (nSector < 0 || !cansee(sprite[i].x, sprite[i].y, sprite[i].z - (16<<8), sprite[i].sectnum, x, y, getflorzofslope(nSector, x, y) - (16<<8), nSector))
+            continue;
+        if (sector[nSector].extra > 0 && (xsector[sector[nSector].extra].Underwater || xsector[sector[nSector].extra].damageType))
+            continue;
+        // never right where somebody starts
+        bool bNearStart = false;
+        for (int p = 0; p < kMaxPlayers && !bNearStart; p++)
+            bNearStart = approxDist(gStartZone[p].x - x, gStartZone[p].y - y) < 600;
+        if (bNearStart)
+            continue;
+        if (actSpawnThing(nSector, x, y, getflorzofslope(nSector, x, y), kThingTNTBarrel))
+            nPlaced++;
+    }
+    LOG_F(INFO, "TNT barrels everywhere: %d placed", nPlaced);
+}
+
+//
 // level start, spawning, frags, every frame
 //
 
@@ -667,6 +972,13 @@ void modesStartLevel(void)
     nHillSprite = -1;
     bMatchOver = false;
     nDeclaredWinner = -1;
+    nDeclaredTeam = -1;
+    nEndTime = -1;
+    bNextSent = bVoting = bVoteMenuWanted = false;
+    Bmemset(nVotes, -1, sizeof(nVotes));
+    Bmemset(nRole, 0, sizeof(nRole));
+    Bmemset(disguise, 0, sizeof(disguise));
+    menuCloseMapVote();
     bSurvivalOver = false;
     nSurvivalWave = nSurvivalKills = 0;
     nSurvivalBreakUntil = kTicsPerSec * 5;
@@ -692,6 +1004,16 @@ void modesStartLevel(void)
                 DeleteSprite(i);
             i = nNext;
         }
+    }
+    if (gChosenRules.nMode == kChosenModeHideSeek)
+        StartHideSeek();
+    if (gChosenRules.nBarrels)
+        PlaceBarrels();
+    if (gChosenRules.nRounds > 1)
+    {
+        char buffer[64];
+        sprintf(buffer, gChosenRules.nRound == gChosenRules.nRounds ? "Final round!" : "Round %d of %d", gChosenRules.nRound, gChosenRules.nRounds);
+        viewSetMessage(buffer, 8, MESSAGE_PRIORITY_NORMAL);
     }
     if (gChosenRules.nMode == kChosenModeKingOfTheHill)
     {
@@ -719,8 +1041,23 @@ void modesPlayerSpawned(PLAYER *pPlayer)
         return;
     bWasAlive[pPlayer->nPlayer] = true;
     stats[pPlayer->nPlayer].nStreak = 0;
+    if (gChosenRules.nSize) // tiny or big players (and their hit boxes)
+        pPlayer->pXSprite->scale = gChosenRules.nSize == 1 ? 128 : 512;
     int nOnly = 0;
-    if (gChosenRules.nMode == kChosenModeGunGame)
+    if (gChosenRules.nMode == kChosenModeHideSeek)
+    {
+        if (nRole[pPlayer->nPlayer] == kSeeker)
+        {
+            GiveOnly(pPlayer, kWeaponShotgun);
+            GiveWeapon(pPlayer, kWeaponTommy, 100);
+        }
+        else
+        {
+            GiveOnly(pPlayer, kWeaponPitchfork); // a hider can't hurt anybody anyway
+            PickDisguise(pPlayer->nPlayer);
+        }
+    }
+    else if (gChosenRules.nMode == kChosenModeGunGame)
         GiveOnly(pPlayer, nGunWeapons[ClipRange(nGunLevel[pPlayer->nPlayer], 0, ARRAY_SSIZE(nGunWeapons) - 1)]);
     else if (OnlyWeapon(&nOnly))
         GiveOnly(pPlayer, nOnly);
@@ -756,6 +1093,10 @@ void modesFrag(PLAYER *pKiller, PLAYER *pVictim)
     const bool bEnemy = nKiller != nVictim && (gGameOptions.nGameType != kGameTypeTeams || pKiller->teamId != pVictim->teamId);
     switch (gChosenRules.nMode)
     {
+    case kChosenModeHideSeek:
+        if (nKiller == nVictim)
+            pKiller->fragCount++; // no minus for it: the hider just joins the seekers
+        break;
     case kChosenModeGunGame:
         if (bEnemy)
         {
@@ -808,6 +1149,8 @@ static void PlayerDied(int nPlayer)
 {
     stats[nPlayer].nDeaths++;
     stats[nPlayer].nStreak = 0;
+    if (gChosenRules.nMode == kChosenModeHideSeek)
+        HiderFound(nPlayer);
     if (gChosenRules.nMode == kChosenModeLastManStanding)
     {
         if (nLives[nPlayer] > 0)
@@ -821,6 +1164,241 @@ static void PlayerDied(int nPlayer)
     }
     if (gChosenRules.nMode == kChosenModeSurvival && gChosenRules.nLives && nSurvivalLives > 0)
         nSurvivalLives--;
+}
+
+//
+// rounds: when one is over the host starts the next on the same map; after the last the
+// players can vote for the next map (the host starts that one too)
+//
+
+static bool IsHost(void)
+{
+    return myconnectindex == connecthead;
+}
+
+static bool IsBotPlayer(int nPlayer)
+{
+    return nPlayer != myconnectindex && botIsBot(nPlayer);
+}
+
+// the round's winner: a player (bloodbath) or a team (teams), -1 for nobody
+static int RoundWinner(void)
+{
+    if (gGameOptions.nGameType == kGameTypeTeams)
+    {
+        if (nDeclaredTeam >= 0)
+            return nDeclaredTeam;
+        return gPlayerScores[0] > gPlayerScores[1] ? 0 : gPlayerScores[1] > gPlayerScores[0] ? 1 : -1;
+    }
+    if (nDeclaredWinner >= 0)
+        return nDeclaredWinner;
+    int nBest = -1, nBestScore = INT_MIN, nTied = 0;
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
+    {
+        if (gPlayer[p].fragCount > nBestScore)
+            nBest = p, nBestScore = gPlayer[p].fragCount, nTied = 0;
+        else if (gPlayer[p].fragCount == nBestScore)
+            nTied++;
+    }
+    return nTied ? -1 : nBest;
+}
+
+static const char *WinnerName(int nWho)
+{
+    if (gGameOptions.nGameType == kGameTypeTeams)
+        return nWho ? "Red Team" : "Blue Team";
+    return gProfile[nWho].name;
+}
+
+static void HostStart(int nRound, int nVote)
+{
+    if (!IsHost() || bNextSent)
+        return;
+    bNextSent = true;
+    PKT_STARTGAME packet = startPacket;
+    packet.nChosenRound = nRound;
+    for (int i = 0; i < kMaxPlayers; i++)
+        packet.nChosenRoundWins[i] = nRound > 1 ? gChosenRules.nRoundWins[i] : 0;
+    if (nVote >= 0 && !bVoteSameUserMap[nVote])
+    {
+        packet.episodeId = nVoteEpisode[nVote];
+        packet.levelId = nVoteLevel[nVote];
+        packet.userMap = 0;
+        packet.userMapName[0] = 0;
+    }
+    if (nRound <= 1)
+        startPacket = packet;
+    gPacketStartGame = packet;
+    LOG_F(INFO, "Starting round %d (episode %d, level %d)", nRound, packet.episodeId + 1, packet.levelId + 1);
+    if (numplayers > 1)
+    {
+        botNetSendRoster();
+        netBroadcastNewGame();
+    }
+    gStartNewGame = 1;
+}
+
+static void RefreshVoteText(void)
+{
+    for (int c = 0; c < kChosenVoteChoices; c++)
+    {
+        int nCount = 0;
+        for (int p = connecthead; p >= 0; p = connectpoint2[p])
+            nCount += nVotes[p] == c;
+        const char *pzName;
+        if (bVoteSameUserMap[c])
+            pzName = gPacketStartGame.userMapName;
+        else
+        {
+            pzName = gEpisodeInfo[nVoteEpisode[c]].levelsInfo[nVoteLevel[c]].Title;
+            if (!pzName[0])
+                pzName = gEpisodeInfo[nVoteEpisode[c]].levelsInfo[nVoteLevel[c]].Filename;
+        }
+        Bsnprintf(zVoteText[c], sizeof(zVoteText[c]), "%s%.28s (%d)", c == 0 ? "AGAIN: " : "", pzName, nCount);
+        Bstrupr(zVoteText[c]);
+    }
+}
+
+static void StartVote(void)
+{
+    // the same map again, and two others (every machine picks the same: the game's random numbers)
+    const bool bUserMap = gGameOptions.zLevelName[0] && gPacketStartGame.userMap;
+    bVoteSameUserMap[0] = bUserMap;
+    nVoteEpisode[0] = gGameOptions.nEpisode, nVoteLevel[0] = gGameOptions.nLevel;
+    int nLevels = 0;
+    for (int e = 0; e < gEpisodeCount; e++)
+        nLevels += gEpisodeInfo[e].nLevels;
+    for (int c = 1; c < kChosenVoteChoices; c++)
+    {
+        bVoteSameUserMap[c] = false;
+        nVoteEpisode[c] = nVoteEpisode[0], nVoteLevel[c] = nVoteLevel[0];
+        for (int nTry = 0; nTry < 20 && nLevels > 1; nTry++)
+        {
+            int n = Random(nLevels), e = 0;
+            while (e < gEpisodeCount - 1 && n >= gEpisodeInfo[e].nLevels)
+                n -= gEpisodeInfo[e].nLevels, e++;
+            bool bTaken = !bUserMap && e == nVoteEpisode[0] && n == nVoteLevel[0];
+            for (int d = 1; d < c; d++)
+                bTaken |= e == nVoteEpisode[d] && n == nVoteLevel[d];
+            if (bTaken)
+                continue;
+            nVoteEpisode[c] = e, nVoteLevel[c] = n;
+            break;
+        }
+    }
+    Bmemset(nVotes, -1, sizeof(nVotes));
+    bVoting = true;
+    bVoteMenuWanted = true;
+    nVoteEnd = gLevelTime + kTicsPerSec * 20;
+    nVoteAllAt = 0;
+    viewSetMessage("Vote for the next map!", 8, MESSAGE_PRIORITY_NORMAL);
+    // the host votes for its bots
+    if (IsHost())
+        for (int p = connecthead; p >= 0; p = connectpoint2[p])
+            if (IsBotPlayer(p))
+            {
+                nVotes[p] = (signed char)((uint32_t)rand() % kChosenVoteChoices);
+                netBroadcastVote(p, nVotes[p]);
+            }
+    RefreshVoteText();
+}
+
+bool modesVoting(void)
+{
+    return bVoting;
+}
+
+const char *modesVoteText(int nChoice)
+{
+    return zVoteText[ClipRange(nChoice, 0, kChosenVoteChoices - 1)];
+}
+
+int modesMyVote(void)
+{
+    return nVotes[myconnectindex];
+}
+
+void modesVote(int nChoice)
+{
+    if (!bVoting || nChoice < 0 || nChoice >= kChosenVoteChoices)
+        return;
+    nVotes[myconnectindex] = nChoice;
+    netBroadcastVote(myconnectindex, nChoice);
+    RefreshVoteText();
+}
+
+void modesReceiveVote(int nPlayer, int nChoice)
+{
+    if (nPlayer < 0 || nPlayer >= kMaxPlayers || nChoice < 0 || nChoice >= kChosenVoteChoices)
+        return;
+    nVotes[nPlayer] = nChoice;
+    RefreshVoteText();
+}
+
+static int VoteWinner(void)
+{
+    int nCount[kChosenVoteChoices] = {};
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
+        if (nVotes[p] >= 0)
+            nCount[(int)nVotes[p]]++;
+    int nBest = 0;
+    for (int c = 1; c < kChosenVoteChoices; c++)
+        if (nCount[c] > nCount[nBest])
+            nBest = c;
+    return nBest;
+}
+
+static void RoundOver(void)
+{
+    if (nEndTime < 0)
+    {
+        nEndTime = gLevelTime;
+        const int nWinner = RoundWinner();
+        if (nWinner >= 0 && gChosenRules.nRoundWins[nWinner] < 255)
+            gChosenRules.nRoundWins[nWinner]++;
+        if (gChosenRules.nRounds > 1 && gChosenRules.nRound >= gChosenRules.nRounds)
+        {
+            // the match: the most rounds won
+            int nBest = -1, nTied = 0;
+            const int nCount = gGameOptions.nGameType == kGameTypeTeams ? 2 : kMaxPlayers;
+            for (int i = 0; i < nCount; i++)
+            {
+                if (gGameOptions.nGameType != kGameTypeTeams && gPlayer[i].pSprite == NULL)
+                    continue;
+                if (nBest < 0 || gChosenRules.nRoundWins[i] > gChosenRules.nRoundWins[nBest])
+                    nBest = i, nTied = 0;
+                else if (gChosenRules.nRoundWins[i] == gChosenRules.nRoundWins[nBest])
+                    nTied++;
+            }
+            char buffer[96];
+            if (nBest >= 0 && !nTied)
+                Bsnprintf(buffer, sizeof(buffer), "%s wins the match (%d rounds)!", WinnerName(nBest), gChosenRules.nRoundWins[nBest]);
+            else
+                Bsnprintf(buffer, sizeof(buffer), "The match is a draw!");
+            viewSetMessage(buffer, 8, MESSAGE_PRIORITY_NORMAL);
+        }
+    }
+    const bool bMoreRounds = gChosenRules.nRound < gChosenRules.nRounds;
+    if (bMoreRounds)
+    {
+        if (gLevelTime - nEndTime >= kTicsPerSec * 8)
+            HostStart(gChosenRules.nRound + 1, -1);
+        return;
+    }
+    if (!gChosenRules.bVote)
+        return;
+    if (!bVoting && gLevelTime - nEndTime >= kTicsPerSec * 5 && !bNextSent)
+        StartVote();
+    if (!bVoting)
+        return;
+    // everybody has voted: a moment to see it, then go
+    bool bAll = true;
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
+        bAll &= nVotes[p] >= 0;
+    if (bAll && !nVoteAllAt)
+        nVoteAllAt = gLevelTime;
+    if (gLevelTime >= nVoteEnd || (nVoteAllAt && gLevelTime - nVoteAllAt >= kTicsPerSec * 2))
+        HostStart(1, VoteWinner());
 }
 
 void modesFrame(void)
@@ -837,7 +1415,18 @@ void modesFrame(void)
         bWasAlive[p] = bAlive;
     }
     if (gPlayerRoundEnding)
+    {
+        RoundOver();
         return;
+    }
+    // guns akimbo for everybody
+    if (gChosenRules.bAkimbo)
+        for (int p = connecthead; p >= 0; p = connectpoint2[p])
+        {
+            PLAYER *pPlayer = &gPlayer[p];
+            if (pPlayer->pXSprite && pPlayer->pXSprite->health > 0)
+                pPlayer->pwUpTime[kPwUpTwoGuns] = ClipLow(pPlayer->pwUpTime[kPwUpTwoGuns], kTicsPerSec * 4);
+        }
     switch (gChosenRules.nMode)
     {
     case kChosenModeLastManStanding:
@@ -854,7 +1443,7 @@ void modesFrame(void)
                     bIn[nTeam] = true;
             }
             if (bHasPlayers[0] && bHasPlayers[1] && bIn[0] != bIn[1])
-                DeclareWinner(-1, bIn[0] ? "Blue Team is the last team standing!" : "Red Team is the last team standing!");
+                DeclareTeamWinner(bIn[0] ? 0 : 1, bIn[0] ? "Blue Team is the last team standing!" : "Red Team is the last team standing!");
             break;
         }
         // the last one with lives left wins
@@ -903,7 +1492,11 @@ void modesFrame(void)
         if (gPlayerRoundScoreLimit)
             playerProcessRoundCheck(&gPlayer[nOn]);
         else if ((gGameOptions.nGameType == kGameTypeTeams ? gPlayerScores[nTeam] : nHillPoints[nOn]) >= 120)
+        {
             DeclareWinner(gGameOptions.nGameType == kGameTypeTeams ? -1 : nOn, gGameOptions.nGameType == kGameTypeTeams ? (nTeam ? "Red Team holds the hill!" : "Blue Team holds the hill!") : "is the king of the hill");
+            if (gGameOptions.nGameType == kGameTypeTeams)
+                nDeclaredTeam = nTeam & 1;
+        }
         break;
     }
     case kChosenModeJuggernaut:
@@ -911,8 +1504,14 @@ void modesFrame(void)
         {
             PLAYER *pJuggernaut = &gPlayer[nJuggernaut];
             if (pJuggernaut->pXSprite && pJuggernaut->pXSprite->health > 0)
+            {
                 pJuggernaut->pwUpTime[kPwUpTwoGuns] = ClipLow(pJuggernaut->pwUpTime[kPwUpTwoGuns], kTicsPerSec * 4);
+                pJuggernaut->pXSprite->scale = 512;
+            }
         }
+        break;
+    case kChosenModeHideSeek:
+        HideSeekFrame();
         break;
     case kChosenModeSurvival:
     {
@@ -978,10 +1577,9 @@ bool modesOutOfLives(int nPlayer)
 
 bool modesWeaponPickup(PLAYER *pPlayer, int nWeapon)
 {
-    UNREFERENCED_PARAMETER(pPlayer);
     if (gGameOptions.nGameType == kGameTypeSinglePlayer)
         return true;
-    if (gChosenRules.nMode == kChosenModeGunGame)
+    if (gChosenRules.nMode == kChosenModeGunGame || IsHiding(pPlayer->nPlayer)) // hiders have no use for guns
         return false;
     int nOnly;
     if (OnlyWeapon(&nOnly))
@@ -991,10 +1589,21 @@ bool modesWeaponPickup(PLAYER *pPlayer, int nWeapon)
 
 int modesDamage(int nSource, spritetype *pTarget, int nDamage)
 {
-    if (!gChosenRules.bOneHit || gGameOptions.nGameType == kGameTypeSinglePlayer || nSource < 0 || nDamage <= 0)
+    if (gGameOptions.nGameType == kGameTypeSinglePlayer || nSource < 0 || nDamage <= 0)
         return nDamage;
-    if (IsPlayerSprite(pTarget) && IsPlayerSprite(&sprite[nSource]) && &sprite[nSource] != pTarget)
+    if (!IsPlayerSprite(pTarget) || !IsPlayerSprite(&sprite[nSource]) || &sprite[nSource] == pTarget)
+        return nDamage;
+    const int nFrom = sprite[nSource].type - kDudePlayer1, nTo = pTarget->type - kDudePlayer1;
+    if (gChosenRules.nMode == kChosenModeHideSeek)
+    {
+        // only seekers hurt, only hiders, and not while they're still blind
+        if (nRole[nFrom] != kSeeker || nRole[nTo] != kHider || gLevelTime < nHideUntil)
+            return 0;
+    }
+    if (gChosenRules.bOneHit)
         return 2000<<4; // one hit and it's over
+    if (gChosenRules.nMode == kChosenModeJuggernaut && nFrom == nJuggernaut)
+        return nDamage * 3 / 2; // the juggernaut hits harder
     return nDamage;
 }
 
@@ -1029,9 +1638,14 @@ int modesGravity(spritetype *pSprite, int nGravity)
 
 static const char *pzWeaponNames[kWeaponMax] = { "-", "PITCHFORK", "FLARE GUN", "SHOTGUN", "TOMMY GUN", "NAPALM", "TNT", "SPRAY CAN", "TESLA", "LIFE LEECH", "VOODOO DOLL", "PROXIMITY TNT", "REMOTE TNT", "BEAST" };
 
+static void DrawRoundsAndVote(void);
+
 void modesDrawHud(void)
 {
-    if (gGameOptions.nGameType == kGameTypeSinglePlayer || !gView || gChosenRules.nMode == kChosenModeNormal)
+    if (gGameOptions.nGameType == kGameTypeSinglePlayer || !gView)
+        return;
+    DrawRoundsAndVote();
+    if (gChosenRules.nMode == kChosenModeNormal)
         return;
     char buffer[96] = "";
     const int nView = gView->nPlayer;
@@ -1055,9 +1669,38 @@ void modesDrawHud(void)
             sprintf(buffer, "JUGGERNAUT: FIRST KILL TAKES IT");
         else if (nJuggernaut == nView)
             sprintf(buffer, "YOU ARE THE JUGGERNAUT");
-        else
-            sprintf(buffer, "JUGGERNAUT: %s", gProfile[nJuggernaut].name);
+        else if (gPlayer[nJuggernaut].pSprite)
+        {
+            // how far, like the hill
+            const spritetype *pJuggernaut = gPlayer[nJuggernaut].pSprite;
+            Bsnprintf(buffer, sizeof(buffer), "JUGGERNAUT: %.15s, %d AWAY", gProfile[nJuggernaut].name, approxDist(gView->pSprite->x - pJuggernaut->x, gView->pSprite->y - pJuggernaut->y) / 16);
+            Bstrupr(buffer);
+        }
         break;
+    case kChosenModeHideSeek:
+    {
+        const int nHiders = CountRole(kHider);
+        if (gLevelTime < nHideUntil)
+        {
+            const int nLeft = (nHideUntil - gLevelTime) / kTicsPerSec + 1;
+            if (nRole[nView] == kSeeker)
+            {
+                // blindfolded: nothing to see but the countdown
+                videoClearViewableArea(0);
+                sprintf(buffer, "THEY ARE HIDING... %d", nLeft);
+                viewDrawText(1, buffer, 160, 90, -128, 0, 1, true);
+                sprintf(buffer, "YOU ARE A SEEKER");
+            }
+            else
+                sprintf(buffer, "HIDE! SEEKERS COME IN %d", nLeft);
+        }
+        else
+        {
+            const int nLeft = ClipLow((nHideEnd - gLevelTime) / kTicsPerSec, 0);
+            sprintf(buffer, "%s - %d HIDING - %d:%02d", nRole[nView] == kSeeker ? "SEEK" : "HIDE", nHiders, nLeft / 60, nLeft % 60);
+        }
+        break;
+    }
     case kChosenModeLastManStanding:
         sprintf(buffer, nLives[nView] ? "LIVES: %d" : "OUT - WATCHING", nLives[nView]);
         break;
@@ -1074,6 +1717,43 @@ void modesDrawHud(void)
     }
     if (buffer[0])
         viewDrawText(3, buffer, 160, 22, -128, 0, 1, true);
+}
+
+static void DrawRoundsAndVote(void)
+{
+    if (bVoteMenuWanted)
+    {
+        bVoteMenuWanted = false;
+        if (!gGameMenuMgr.m_bActive)
+            menuOpenMapVote();
+    }
+    if (gGameMenuMgr.m_bActive) // the vote menu (or another) shows it all
+        return;
+    char buffer[96];
+    if (gChosenRules.nRounds > 1)
+    {
+        sprintf(buffer, "ROUND %d OF %d", gChosenRules.nRound, gChosenRules.nRounds);
+        const int nView = gView ? gView->nPlayer : myconnectindex;
+        const int nMine = gGameOptions.nGameType == kGameTypeTeams ? gPlayer[nView].teamId & 1 : nView;
+        sprintf(buffer + strlen(buffer), " - %s %d", gGameOptions.nGameType == kGameTypeTeams ? "TEAM WINS" : "YOUR WINS", gChosenRules.nRoundWins[nMine]);
+        viewDrawText(3, buffer, 160, 31, -128, 0, 1, true);
+    }
+    if (bVoting)
+    {
+        const int nLeft = ClipLow((nVoteEnd - gLevelTime) / kTicsPerSec + 1, 0);
+        sprintf(buffer, nVotes[myconnectindex] >= 0 ? "NEXT MAP VOTE (%d): YOU VOTED" : "NEXT MAP VOTE (%d)", nLeft);
+        // closed the vote without voting: it comes back
+        static int nClosedAt;
+        if (nVotes[myconnectindex] >= 0)
+            nClosedAt = 0;
+        else if (!nClosedAt)
+            nClosedAt = (int)totalclock;
+        else if ((int)totalclock - nClosedAt > kTicRate * 3)
+            nClosedAt = 0, bVoteMenuWanted = true;
+        viewDrawText(3, buffer, 160, 40, -128, 0, 1, true);
+        for (int c = 0; c < kChosenVoteChoices; c++)
+            viewDrawText(3, zVoteText[c], 160, 50 + c * 9, nVotes[myconnectindex] == c ? -128 : 0, nVotes[myconnectindex] == c ? kFlagRedPal : 0, 1, true);
+    }
 }
 
 bool modesShowStats(void)
@@ -1149,4 +1829,28 @@ void modesDrawStats(int nTop)
         Bstrupr(buffer);
         viewDrawText(3, buffer, 160, y, 0, 0, 1, true);
     }
+}
+
+//
+// only the host starts new games
+//
+
+bool modesMayStartGame(void)
+{
+    return numplayers < 2 || IsHost() || !gNetHostOnly;
+}
+
+void modesSendHostOnly(void)
+{
+    if (!IsHost())
+        return;
+    gNetHostOnly = gHostOnlyPref;
+    netBroadcastHostOnly(gNetHostOnly);
+}
+
+void modesReceiveHostOnly(int nValue)
+{
+    gNetHostOnly = nValue != 0;
+    if (gNetHostOnly)
+        menuLeaveNetStart(); // a player in the game setup: only the host can start it now
 }

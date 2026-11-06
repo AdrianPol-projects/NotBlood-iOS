@@ -604,7 +604,9 @@ CGameMenuItemZBool itemNetStartBoolSecondWind("SECOND WIND:", 3, 66, 125, 180, t
 CGameMenuItemZBool itemNetStartBoolSpectatorMode("SPECTATING:", 3, 66, 134, 180, false, 0, NULL, NULL);
 CGameMenuItemChain itemNetStart8("SET ITEMS", 3, 0, 143, 256, 1, &menuBannedItems, -1, NULL, 0);
 CGameMenuItemChain itemNetStart8Load("LOAD ITEMS", 3, 0, 143, 384, 1, &menuMultiUserItems, 0, NULL, 0);
-CGameMenuItemChain itemNetStart9("SET MUTATORS", 3, 0, 153, 320, 1, &menuNetworkGameMutators, -1, NULL, 0);
+CGameMenuItemChain itemNetStart9("SET MUTATORS", 3, 0, 153, 256, 1, &menuNetworkGameMutators, -1, NULL, 0);
+extern CGameMenu menuMatchRules;
+CGameMenuItemChain itemNetStartRules("MATCH RULES", 3, 0, 153, 384, 1, &menuMatchRules, -1, NULL, 0);
 CGameMenuItemChain itemNetStart10("USER MAP", 3, 0, 163, 256, 1, &menuMultiUserMaps, 0, NULL, 0);
 CGameMenuItemChain itemNetStart10Coop("LOAD CO-OP", 3, 0, 163, 384, 1, &menuCoopLoad, -1, SetupCoopLoadMenu, 0);
 
@@ -849,8 +851,41 @@ CGameMenuItemZCycle itemChosenMutatorGravity("GRAVITY:", 3, 66, 50, 180, 0, NULL
 CGameMenuItemZBool itemChosenMutatorVampire("VAMPIRE (HITS HEAL YOU):", 3, 66, 62, 180, false, NULL, NULL, NULL);
 CGameMenuItemZBool itemChosenMutatorOneHit("ONE-HIT KILLS:", 3, 66, 74, 180, false, NULL, NULL, NULL);
 CGameMenuItemZCycle itemChosenMutatorWeapons("WEAPONS:", 3, 66, 86, 180, 0, NULL, pzChosenWeapons, ARRAY_SSIZE(pzChosenWeapons), 0);
-CGameMenuItemText itemChosenMutatorsHelp1("THESE WORK WITH REAL PLAYERS AND BOTS", 3, 160, 110, 1);
-CGameMenuItemText itemChosenMutatorsHelp2("(EVERYBODY NEEDS THE SAME VERSION)", 3, 160, 120, 1);
+static const char *pzChosenSize[] = { "NORMAL", "TINY", "BIG" };
+static const char *pzChosenBarrels[] = { "OFF", "SOME", "LOTS" };
+CGameMenuItemZCycle itemChosenMutatorSize("PLAYER SIZE:", 3, 66, 98, 180, 0, NULL, pzChosenSize, ARRAY_SSIZE(pzChosenSize), 0);
+CGameMenuItemZCycle itemChosenMutatorBarrels("TNT BARRELS EVERYWHERE:", 3, 66, 110, 180, 0, NULL, pzChosenBarrels, ARRAY_SSIZE(pzChosenBarrels), 0);
+CGameMenuItemZBool itemChosenMutatorAkimbo("AKIMBO EVERYTHING:", 3, 66, 122, 180, false, NULL, NULL, NULL);
+CGameMenuItemText itemChosenMutatorsHelp1("THESE WORK WITH REAL PLAYERS AND BOTS", 3, 160, 144, 1);
+CGameMenuItemText itemChosenMutatorsHelp2("(EVERYBODY NEEDS THE SAME VERSION)", 3, 160, 154, 1);
+
+// MATCH RULES: rounds, the map vote, who may start games
+CGameMenu menuMatchRules;
+static void SetHostOnly(CGameMenuItemZBool *pItem);
+static void UpdateMatchRules(CGameMenuItem *pItem);
+CGameMenuItemTitle itemMatchRulesTitle("MATCH RULES", 1, 160, 20, 2038);
+CGameMenuItemSlider itemMatchRulesRounds("ROUNDS:", 3, 66, 50, 180, 1, 1, 9, 1, NULL, -1, -1, kMenuSliderValue);
+CGameMenuItemZBool itemMatchRulesVote("VOTE FOR THE NEXT MAP:", 3, 66, 62, 180, false, NULL, NULL, NULL);
+CGameMenuItemZBool itemMatchRulesHostOnly("ONLY THE HOST STARTS GAMES:", 3, 66, 74, 180, false, SetHostOnly, NULL, NULL);
+CGameMenuItemText itemMatchRulesHelp1("A ROUND ENDS AT THE SCORE OR TIME LIMIT,", 3, 160, 100, 1);
+CGameMenuItemText itemMatchRulesHelp2("OR WHEN THE MATCH TYPE HAS A WINNER", 3, 160, 110, 1);
+CGameMenuItemText itemMatchRulesHelp3("THE NEXT ROUND STARTS BY ITSELF", 3, 160, 124, 1);
+
+static void SetHostOnly(CGameMenuItemZBool *pItem)
+{
+    gHostOnlyPref = pItem->at20;
+    modesSendHostOnly();
+}
+
+static void UpdateMatchRules(CGameMenuItem *pItem)
+{
+    UNREFERENCED_PARAMETER(pItem);
+    // the host's choice: only the host sees it
+    itemMatchRulesHostOnly.bEnable = gNetMode != NETWORK_NONE && myconnectindex == connecthead;
+    itemMatchRulesHostOnly.bNoDraw = !itemMatchRulesHostOnly.bEnable;
+    itemMatchRulesHostOnly.at20 = gHostOnlyPref;
+    itemMatchRulesRounds.bEnable = itemNetGameMode.m_nFocus+1 != kGameTypeCoop; // co-op plays the level through
+}
 CGameMenuItemZBool itemMutatorBoolQuadDamagePowerup("REPLACE AKIMBO WITH 4X DAMAGE:", 3, 66, 32, 180, false, SetQuadDamagePowerup, NULL, NULL);
 CGameMenuItemZCycle itemMutatorCycleBeastVisionReplacement("REPLACE BEAEST VISION:", 3, 66, 32, 180, 0, SetBeastVisionReplacement, pzBeastVisionReplacementStrings, ARRAY_SSIZE(pzBeastVisionReplacementStrings), 0);
 CGameMenuItemZCycle itemMutatorDamageInvul("INVULNERABILITY DURATION:", 3, 66, 42, 180, 0, SetDamageInvul, pzDamageInvulBehaviorStrings, ARRAY_SSIZE(pzDamageInvulBehaviorStrings), 0);
@@ -1602,6 +1637,21 @@ void SetupEpisodeMenu(void)
     menuUserMap.Add(&itemUserMapList, true);
 }
 
+// only the host starts new games: the others' START GAME and NEW GAME do nothing
+static void UpdateNetStartButton(CGameMenuItem *pItem)
+{
+    UNREFERENCED_PARAMETER(pItem);
+    const bool bMay = modesMayStartGame();
+    itemNetStart11.bEnable = bMay;
+    itemNetStart11.m_pzText = bMay ? zNetStartGame : "HOST STARTS THE GAME";
+}
+
+static void UpdateNewGameItem(CGameMenuItem *pItem)
+{
+    CGameMenuItemChain *pChain = (CGameMenuItemChain *)pItem;
+    pChain->bEnable = gGameOptions.nGameType == kGameTypeSinglePlayer || modesMayStartGame();
+}
+
 void SetupMainMenu(void)
 {
     menuMain.Add(&itemMainTitle, false);
@@ -1702,6 +1752,7 @@ void SetupNetStartMenu(void)
     menuNetStart.Add(&itemNetStart8, false);
     menuNetStart.Add(&itemNetStart8Load, false);
     menuNetStart.Add(&itemNetStart9, false);
+    menuNetStart.Add(&itemNetStartRules, false);
     menuNetStart.Add(&itemNetStart10, false);
     menuNetStart.Add(&itemNetStart10Coop, false);
     menuNetStart.Add(&itemNetStart11, false);
@@ -1812,12 +1863,39 @@ void SetupNetStartMenu(void)
     menuNetworkGameMutators.Add(&itemNetMutatorRandomizerMode, false);
     menuNetworkGameMutators.Add(&itemNetMutatorRandomizerSeed, false);
     menuNetworkGameMutators.Add(&itemNetMutatorMore, false);
-    itemNetMutatorMore.tooltip_pzTextUpper = "Gravity, vampire, one-hit kills, weapon sets";
+    itemNetMutatorMore.tooltip_pzTextUpper = "Gravity, vampire, one-hit kills, weapon sets,";
+    itemNetMutatorMore.tooltip_pzTextLower = "player size, TNT barrels, akimbo everything";
+    itemChosenMutatorSize.tooltip_pzTextUpper = "Tiny or big players (smaller or bigger to hit)";
+    itemChosenMutatorBarrels.tooltip_pzTextUpper = "Extra TNT barrels around the map's items";
+    itemChosenMutatorAkimbo.tooltip_pzTextUpper = "Guns akimbo all the time; the pitchfork stabs";
+    itemChosenMutatorAkimbo.tooltip_pzTextLower = "twice and its full charge throws a fireball";
+    menuMatchRules.Add(&itemMatchRulesTitle, false);
+    menuMatchRules.Add(&itemMatchRulesRounds, true);
+    menuMatchRules.Add(&itemMatchRulesVote, false);
+    menuMatchRules.Add(&itemMatchRulesHostOnly, false);
+    menuMatchRules.Add(&itemMatchRulesHelp1, false);
+    menuMatchRules.Add(&itemMatchRulesHelp2, false);
+    menuMatchRules.Add(&itemMatchRulesHelp3, false);
+    menuMatchRules.Add(&itemBloodQAV, false);
+    itemMatchRulesTitle.pPreDrawCallback = UpdateMatchRules;
+    itemMatchRulesRounds.tooltip_pzTextUpper = "Rounds in a match (bloodbath and teams):";
+    itemMatchRulesRounds.tooltip_pzTextLower = "whoever wins the most rounds wins the match";
+    itemMatchRulesVote.tooltip_pzTextUpper = "After the match everybody votes: the same map";
+    itemMatchRulesVote.tooltip_pzTextLower = "or one of two others; then it starts by itself";
+    itemMatchRulesHostOnly.tooltip_pzTextUpper = "Other players can't start a new game,";
+    itemMatchRulesHostOnly.tooltip_pzTextLower = "before the match or from the menu during it";
+    itemNetStartRules.tooltip_pzTextUpper = "Rounds, map vote, who may start games";
+    itemNetStart11.pPreDrawCallback = UpdateNetStartButton;
+    itemMain1.pPreDrawCallback = UpdateNewGameItem;
+    itemMainSave1.pPreDrawCallback = UpdateNewGameItem;
     menuChosenMutators.Add(&itemChosenMutatorsTitle, false);
     menuChosenMutators.Add(&itemChosenMutatorGravity, true);
     menuChosenMutators.Add(&itemChosenMutatorVampire, false);
     menuChosenMutators.Add(&itemChosenMutatorOneHit, false);
     menuChosenMutators.Add(&itemChosenMutatorWeapons, false);
+    menuChosenMutators.Add(&itemChosenMutatorSize, false);
+    menuChosenMutators.Add(&itemChosenMutatorBarrels, false);
+    menuChosenMutators.Add(&itemChosenMutatorAkimbo, false);
     menuChosenMutators.Add(&itemChosenMutatorsHelp1, false);
     menuChosenMutators.Add(&itemChosenMutatorsHelp2, false);
     menuChosenMutators.Add(&itemBloodQAV, false);
@@ -5167,6 +5245,15 @@ void BotMatchSetMap(int nEpisode, int nLevel)
     itemNetStart3.SetTextIndex(ClipRange(nLevel, 0, gEpisodeInfo[nEpisode].nLevels-1));
 }
 
+void BotMatchSetRules(int nSize, int nBarrels, int bAkimbo, int nRounds, int bVote)
+{
+    itemChosenMutatorSize.SetTextIndex(ClipRange(nSize, 0, 2));
+    itemChosenMutatorBarrels.SetTextIndex(ClipRange(nBarrels, 0, 2));
+    itemChosenMutatorAkimbo.at20 = bAkimbo != 0;
+    itemMatchRulesRounds.nValue = ClipRange(nRounds, 1, 9);
+    itemMatchRulesVote.at20 = bVote != 0;
+}
+
 void BotMatchSetMode(int nGameType, int nMode)
 {
     SetupBotMatchMenu(NULL);
@@ -5208,6 +5295,9 @@ void BotMatchResetMutators(void)
     itemChosenMutatorVampire.at20 = 0;
     itemChosenMutatorOneHit.at20 = 0;
     itemChosenMutatorWeapons.SetTextIndex(0);
+    itemChosenMutatorSize.SetTextIndex(0);
+    itemChosenMutatorBarrels.SetTextIndex(0);
+    itemChosenMutatorAkimbo.at20 = 0;
 }
 
 void StartBotMatch(CGameMenuItemChain *pItem)
@@ -5219,6 +5309,8 @@ void StartBotMatch(CGameMenuItemChain *pItem)
 void StartNetGame(CGameMenuItemChain *pItem)
 {
     UNREFERENCED_PARAMETER(pItem);
+    if (!modesMayStartGame()) // the host said only it starts games
+        return;
     gPacketStartGame.bCoopContinue = 0; // a fresh game, not a continued co-op save
     coopStartPacketReceived(false);
     gPacketStartGame.gameType = itemNetGameMode.m_nFocus+1;
@@ -5323,6 +5415,14 @@ void StartNetGame(CGameMenuItemChain *pItem)
     gPacketStartGame.nChosenWeapons = itemChosenMutatorWeapons.m_nFocus < 2 ? itemChosenMutatorWeapons.m_nFocus : kChosenWeaponsOnlyBase + itemChosenMutatorWeapons.m_nFocus - 2;
     gPacketStartGame.bChosenVampire = itemChosenMutatorVampire.at20;
     gPacketStartGame.bChosenOneHit = itemChosenMutatorOneHit.at20;
+    gPacketStartGame.nChosenSize = itemChosenMutatorSize.m_nFocus;
+    gPacketStartGame.nChosenBarrels = itemChosenMutatorBarrels.m_nFocus;
+    gPacketStartGame.bChosenAkimbo = itemChosenMutatorAkimbo.at20;
+    gPacketStartGame.nChosenRounds = gPacketStartGame.gameType == kGameTypeCoop ? 1 : ClipRange(itemMatchRulesRounds.nValue, 1, 9);
+    gPacketStartGame.nChosenRound = 1;
+    memset(gPacketStartGame.nChosenRoundWins, 0, sizeof(gPacketStartGame.nChosenRoundWins));
+    gPacketStartGame.bChosenVote = itemMatchRulesVote.at20;
+    gPacketStartGame.bChosenHostOnly = gNetMode != NETWORK_NONE && gHostOnlyPref;
     gPacketStartGame.nChosenWaves = gPacketStartGame.nChosenMode == kChosenModeSurvival ? nChosenWavesFromMenu[ClipRange(itemNetGameChosenWaves.m_nFocus, 0, ARRAY_SSIZE(nChosenWavesFromMenu)-1)] : kChosenWavesNormal;
     ////
     Bstrncpy(gPacketStartGame.userMapName, zUserMapName, sizeof(zUserMapName));

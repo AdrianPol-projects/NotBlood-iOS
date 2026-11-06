@@ -39,6 +39,7 @@ void BotMatchSetMap(int nEpisode, int nLevel);
 void BotMatchSetMode(int nGameType, int nMode);
 void BotMatchSetLives(int nLives);
 void BotMatchResetMutators(void);
+void BotMatchSetRules(int nSize, int nBarrels, int bAkimbo, int nRounds, int bVote);
 int NetMenuGameType(void);      // the GAME SETTINGS choice: kGameTypeCoop, ...
 bool NetMenuAutoTeams(void);
 
@@ -61,3 +62,8 @@ extern CGameMenuItemText itemMainVersion;
 extern CGameMenuItemText itemNetworkHostAddress;
 extern CGameMenuItemText itemNetworkHostHelp;
 void SetupLanGamesMenu(CGameMenuItemChain *pItem);
+
+// the vote for the next map, and players waiting for the host (chosenmodes.cpp)
+void menuOpenMapVote(void);
+void menuCloseMapVote(void);
+void menuLeaveNetStart(void);

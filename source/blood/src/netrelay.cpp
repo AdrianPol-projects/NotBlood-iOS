@@ -1127,6 +1127,10 @@ EM_JS(char *, web_relayPageServer, (), {
     return stringToNewUTF8(Module.notbloodServer || "");
 });
 
+EM_JS(char *, web_relayPageHost, (), {
+    return stringToNewUTF8(location.host || "");
+});
+
 EM_JS(int, web_relayPageIsHttps, (), {
     return location.protocol === "https:" ? 1 : 0;
 });
@@ -1166,9 +1170,18 @@ std::string webServerUrl(const std::string &s)
     if (bHttps && u.compare(0, 5, "ws://") == 0)
         u = "wss://" + u.substr(5);  // a secure page may only open secure connections
     size_t const host = u.find("://") + 3;
-    if (u.find('/', host) == std::string::npos)
-        u += "/ws";
-    return u;
+    size_t const path = u.find('/', host);
+    if (path == std::string::npos)
+        return u + "/ws";
+    // the address of the game's page (.../play/) or the dashboard (.../): the relay is .../ws
+    std::string p = u.substr(path);
+    while (p.size() > 1 && p.back() == '/')
+        p.pop_back();
+    if (p == "/" || p == "/play")
+        p = "/ws";
+    else if (p.size() > 5 && p.compare(p.size() - 5, 5, "/play") == 0)
+        p = p.substr(0, p.size() - 5) + "/ws";
+    return u.substr(0, path) + p;
 }
 
 void webSendText(const std::string &t)
@@ -1367,6 +1380,13 @@ void relayConnect(const char *pzServer, const char *pzKey, const char *pzGameVer
     emscripten_websocket_set_onerror_callback(g_web.ws, NULL, webOnError);
     emscripten_websocket_set_onclose_callback(g_web.ws, NULL, webOnClose);
     emscripten_websocket_set_onmessage_callback(g_web.ws, NULL, webOnMessage);
+}
+
+void relayPageServer(char *pzServer, int nSize)
+{
+    char *p = web_relayPageHost();
+    snprintf(pzServer, nSize, "%s", p);
+    free(p);
 }
 
 void relayClose(void)

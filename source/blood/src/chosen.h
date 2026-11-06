@@ -20,4 +20,4 @@ See the GNU General Public License for more details.
 #pragma once
 
 #define CHOSEN_NAME "NotBlood Chosen"
-#define CHOSEN_VERSION "1.2"
+#define CHOSEN_VERSION "1.3"

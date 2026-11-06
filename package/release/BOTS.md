@@ -1,4 +1,4 @@
-**NotBlood Chosen 1.2 - bots.** Setup and everything else NotBlood Chosen adds: see the release notes and the README in the download.
+**NotBlood Chosen 1.3 - bots.** Setup and everything else NotBlood Chosen adds: see the release notes and the README in the download.
 
 
 ### Playing against bots
@@ -69,7 +69,7 @@ Host the game as usual (HOST A GAME or an online lobby). In the MULTIPLAYER setu
 
 - The host's PC plays the bots and sends what they do along with everybody's moves, so every player sees the same bots. Their taunts reach everybody too.
 - In co-op they stay with the closest player on their side; after the host's BOT ORDERS (ESC) "follow me" means the host.
-- Everybody needs 1.2. Co-op saves aren't made in games with bots (yet).
+- Everybody needs 1.3. Co-op saves aren't made in games with bots (yet).
 
 ### Teams
 
@@ -81,13 +81,15 @@ GAME SETTINGS > GAME: TEAMS, then MODE (now right under GAME): **team bloodbath*
 
 MULTIPLAYER match settings (or MATCH SETTINGS in the bots menu) > GAME > **MODE**:
 
-- **Bloodbath**: normal, *gun game* (every kill moves you on to the next of 10 weapons; a pitchfork kill with the last one wins), *king of the hill* (a point a second for holding the flag-marked area alone; it moves every 90 seconds), *juggernaut* (whoever kills the juggernaut becomes it: 200 health, armor, double guns; only kills by or of the juggernaut score), *last man standing* (LIVES EACH; the last one with lives left wins)
+- **Bloodbath**: normal, *gun game* (every kill moves you on to the next of 10 weapons; a pitchfork kill with the last one wins), *king of the hill* (a point a second for holding the flag-marked area alone; it moves every 90 seconds), *juggernaut* (whoever kills the juggernaut becomes it: 200 health, armor, double guns; only kills by or of the juggernaut score), *last man standing* (LIVES EACH; the last one with lives left wins), *hide and seek* (new in 1.3: hiders look like objects from the map and only have the pitchfork, seekers start blindfolded for 30 seconds, found hiders become seekers; bot seekers spot hiders that are close, move or shoot)
 - **Teams**: team bloodbath, capture the flag (the bots carry, return and defend flags), king of the hill, last team standing
 - **Co-op**: normal, *survival* (waves of monsters that get bigger and nastier, ammo between waves, shared lives (0: endless), your best wave per map is kept). **WAVES**: VERY EASY, EASY, NORMAL (as before) or HARD: how many monsters come, how soon the strong ones do, how long the breaks are and how much ammo you get; the easy ones also hand out health (and armor on VERY EASY) every wave. Maps made for survival can mark where monsters come in with dude spawn markers that nothing triggers.
 
-SET MUTATORS > **MORE MUTATORS**: low or moon gravity, vampire (hits heal you), one-hit kills, and weapon sets (a random weapon at every spawn, or one weapon only).
+SET MUTATORS > **MORE MUTATORS**: low or moon gravity, vampire (hits heal you), one-hit kills, and weapon sets (a random weapon at every spawn, or one weapon only). New in 1.3: player size (tiny or big), TNT barrels everywhere, akimbo everything.
 
-During a match ESC shows **MATCH STATS** (frags, deaths, aim, best streak, favourite weapon, your nemesis and favourite victim; also shown when a match ends). Everybody in a network game needs the same version (1.2).
+**MATCH RULES** (new in 1.3, next to SET MUTATORS): rounds (1-9), a vote for the next map at the end (bots vote at random), and ONLY THE HOST STARTS GAMES.
+
+During a match ESC shows **MATCH STATS** (frags, deaths, aim, best streak, favourite weapon, your nemesis and favourite victim; also shown when a match ends). Everybody in a network game needs the same version (1.3).
 
 ### More with bots
 

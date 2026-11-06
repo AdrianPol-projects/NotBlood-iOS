@@ -19,6 +19,9 @@ void web_filesChanged(void);
 // the device has a touch screen (tablets, phones, touch laptops)
 int web_hastouch(void);
 
+// the device has 6 or more processor cores (recent tablets and phones, computers)
+int web_manycores(void);
+
 // the page's size in pixels changed (and stayed so for a moment) since the last call
 int web_screenchanged(void);
 
